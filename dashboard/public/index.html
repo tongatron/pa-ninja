@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PA Scraping Dashboard</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="layout">
+    <!-- Sidebar -->
+    <nav class="sidebar">
+      <div class="sidebar-brand">
+        <span class="brand-icon">&#x1F4CB;</span>
+        <span class="brand-name">PA Scraping</span>
+      </div>
+      <ul class="nav-list">
+        <li><a class="nav-link active" data-section="dashboard" href="#">
+          <span class="nav-icon">&#x1F4CA;</span> Dashboard
+        </a></li>
+        <li><a class="nav-link" data-section="sites" href="#">
+          <span class="nav-icon">&#x1F310;</span> Siti
+        </a></li>
+        <li><a class="nav-link" data-section="results" href="#">
+          <span class="nav-icon">&#x1F4CB;</span> Risultati
+        </a></li>
+        <li><a class="nav-link" data-section="sessions" href="#">
+          <span class="nav-icon">&#x1F511;</span> Sessioni
+        </a></li>
+      </ul>
+      <div class="sidebar-footer">
+        <span class="version">v0.1.0</span>
+      </div>
+    </nav>
+
+    <!-- Main content -->
+    <main class="content">
+      <!-- Dashboard section -->
+      <section id="section-dashboard" class="section active">
+        <div class="section-header">
+          <h1>Dashboard</h1>
+          <button id="btn-run-all" class="btn btn-primary">&#9654; Esegui tutti ora</button>
+        </div>
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-value" id="stat-sites">-</div>
+            <div class="stat-label">Siti attivi</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="stat-total">-</div>
+            <div class="stat-label">Annunci totali</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="stat-new-today">-</div>
+            <div class="stat-label">Nuovi oggi</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="stat-last-run">-</div>
+            <div class="stat-label">Ultima run</div>
+          </div>
+        </div>
+        <div id="run-all-status" class="alert hidden"></div>
+      </section>
+
+      <!-- Sites section -->
+      <section id="section-sites" class="section">
+        <div class="section-header">
+          <h1>Siti</h1>
+          <button id="btn-add-site" class="btn btn-primary">+ Aggiungi sito</button>
+        </div>
+        <div class="table-container">
+          <table id="sites-table">
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th>URL</th>
+                <th>Auth</th>
+                <th>Schedule</th>
+                <th>Ultima run</th>
+                <th>Status</th>
+                <th>Azioni</th>
+              </tr>
+            </thead>
+            <tbody id="sites-tbody">
+              <tr><td colspan="7" class="loading">Caricamento...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Results section -->
+      <section id="section-results" class="section">
+        <div class="section-header">
+          <h1>Risultati</h1>
+        </div>
+        <div class="filters-bar">
+          <select id="filter-site" class="filter-input">
+            <option value="">Tutti i siti</option>
+          </select>
+          <select id="filter-province" class="filter-input">
+            <option value="">Tutte le province</option>
+          </select>
+          <input id="filter-keyword" type="text" class="filter-input" placeholder="Parola chiave..." />
+          <input id="filter-expires" type="date" class="filter-input" title="Scade dopo..." />
+          <button id="btn-search" class="btn btn-secondary">Cerca</button>
+          <button id="btn-reset-filters" class="btn btn-ghost">Reset</button>
+        </div>
+        <div class="table-container">
+          <table id="results-table">
+            <thead>
+              <tr>
+                <th>Titolo</th>
+                <th>Organizzazione</th>
+                <th>Sede</th>
+                <th>Provincia</th>
+                <th>Contratto</th>
+                <th>Scadenza</th>
+              </tr>
+            </thead>
+            <tbody id="results-tbody">
+              <tr><td colspan="6" class="loading">Usa i filtri per cercare annunci...</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="pagination" id="results-pagination"></div>
+      </section>
+
+      <!-- Sessions section -->
+      <section id="section-sessions" class="section">
+        <div class="section-header">
+          <h1>Sessioni SPID</h1>
+        </div>
+        <div class="table-container">
+          <table id="sessions-table">
+            <thead>
+              <tr>
+                <th>Sito</th>
+                <th>Salvata il</th>
+                <th>Azioni</th>
+              </tr>
+            </thead>
+            <tbody id="sessions-tbody">
+              <tr><td colspan="3" class="loading">Caricamento...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Modal: Add/Edit Site -->
+  <div id="site-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="modal-title">Aggiungi sito</h2>
+        <button class="modal-close" id="modal-close">&times;</button>
+      </div>
+      <form id="site-form">
+        <input type="hidden" id="site-id" />
+        <div class="form-group">
+          <label>Nome <span class="required">*</span></label>
+          <input type="text" id="site-name" required />
+        </div>
+        <div class="form-group">
+          <label>URL <span class="required">*</span></label>
+          <input type="url" id="site-url" required />
+        </div>
+        <div class="form-group">
+          <label>Module Path <span class="required">*</span></label>
+          <input type="text" id="site-module" placeholder="es. lavoro-piemonte" required />
+        </div>
+        <div class="form-group">
+          <label>Schedule (cron)</label>
+          <input type="text" id="site-schedule" placeholder="0 8,14 * * *" />
+        </div>
+        <div class="form-group">
+          <label>Tipo autenticazione</label>
+          <select id="site-auth">
+            <option value="none">Nessuna</option>
+            <option value="spid">SPID</option>
+            <option value="basic">Basic</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>
+            <input type="checkbox" id="site-enabled" checked />
+            Abilitato
+          </label>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" id="modal-cancel">Annulla</button>
+          <button type="submit" class="btn btn-primary">Salva</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Result detail -->
+  <div id="result-modal" class="modal-overlay hidden">
+    <div class="modal modal-wide">
+      <div class="modal-header">
+        <h2 id="result-modal-title">Dettaglio annuncio</h2>
+        <button class="modal-close" id="result-modal-close">&times;</button>
+      </div>
+      <div id="result-modal-body"></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
