@@ -301,6 +301,15 @@ app.get('/api/stats', (req, res) => {
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`PA-Scraping dashboard running at http://localhost:${PORT}`);
+});
+
+server.on('error', err => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`\n❌ Porta ${PORT} già in uso.\nChiudi l'altro processo con:\n  pkill -f "node dashboard/server.js"\noppure usa una porta diversa:\n  PORT=3002 npm start\n`);
+  } else {
+    console.error('Server error:', err.message);
+  }
+  process.exit(1);
 });
