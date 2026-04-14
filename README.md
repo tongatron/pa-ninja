@@ -104,8 +104,6 @@ Per siti con autenticazione SPID, imposta `auth_type: spid` e usa
 - [ ] Testare login SPID con Playwright su sito reale
 
 ### Funzionalità pianificate
-- [ ] **Notifiche** — email o Telegram quando escono nuovi risultati
-- [ ] **Scheduler automatico** — attivare il cron integrato (già configurato per sito, da abilitare)
 - [ ] **Filtro diff** — mostrare solo i risultati nuovi rispetto all'ultima run
 - [ ] **Export** — download CSV/JSON direttamente dalla dashboard
 - [ ] **Tag e note** — annotare manualmente i risultati interessanti
@@ -114,3 +112,13 @@ Per siti con autenticazione SPID, imposta `auth_type: spid` e usa
 - [ ] **Electron** — pacchetto desktop installabile (.dmg / .exe) per utenti non tecnici
 - [ ] **Docker** — container per chi preferisce non installare Node
 - [ ] **Configurazione via `.env`** — credenziali, porta, path DB
+
+
+
+NOTE
+
+Non prevediamo schedulazione. Il programma deve essere lanciato dall'utente ogni volta per autenticazione.
+
+Filtro diff — evidenziare i risultati nuovi rispetto all'ultima run
+
+npx playwright install
