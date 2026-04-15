@@ -167,7 +167,7 @@ document.getElementById('btn-run-all').addEventListener('click', async () => {
       pollRunStatus(result.runIds, statusEl, () => {
         btn.disabled = false;
         btn.textContent = '▶ Esegui tutti ora';
-        loadDashboard();
+        loadSites();
       });
     } else {
       btn.disabled = false;
@@ -213,48 +213,130 @@ async function pollRunStatus(runIds, statusEl, onComplete) {
   setTimeout(check, 2000);
 }
 
-// ── Sites ─────────────────────────────────────────────────────────────────────
+// ── Sites / Dashboard ─────────────────────────────────────────────────────────
+
+// Raggruppamento servizi: ogni servizio raggruppa uno o più site (job)
+const SERVICE_GROUPS = [
+  { key: 'piemonte-tu',    name: 'Piemonte Tu',      icon: '✉️',  patterns: ['piemonte-tu'] },
+  { key: 'lavoro-piemonte',name: 'Lavoro Piemonte',  icon: '🏢',  patterns: ['lavoro-piemonte'] },
+  { key: 'unito',          name: 'UniTo',             icon: '🎓',  patterns: ['esse3-unito', 'unito'] },
+];
+
+const JOB_LABELS = {
+  'lavoro-piemonte':          'Annunci di lavoro',
+  'lavoro-piemonte-documenti':'Documenti',
+  'piemonte-tu-messaggi':     'Messaggi',
+  'esse3-unito':              'Libretto & Carriera',
+};
 
 let sitesData = [];
 
 async function loadSites() {
-  const tbody = document.getElementById('sites-tbody');
-  tbody.innerHTML = '<tr><td colspan="6" class="loading">Caricamento...</td></tr>';
+  const grid = document.getElementById('services-grid');
+  grid.innerHTML = '<div class="loading" style="padding:40px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>';
   try {
-    sitesData = await get('/api/sites');
-    renderSites();
+    const [sites, sessions] = await Promise.all([
+      get('/api/sites'),
+      get('/api/sessions'),
+    ]);
+    sitesData = sites;
+    renderServiceCards(sites, sessions);
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="7" class="loading">Errore: ${esc(err.message)}</td></tr>`;
+    grid.innerHTML = `<div style="color:var(--color-danger);padding:24px">Errore: ${esc(err.message)}</div>`;
   }
 }
 
-function renderSites() {
-  const tbody = document.getElementById('sites-tbody');
-  if (sitesData.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" class="loading">Nessun sito configurato</td></tr>';
-    return;
+function renderServiceCards(sites, sessions) {
+  const grid = document.getElementById('services-grid');
+  const assigned = new Set();
+  const cards = [];
+
+  for (const group of SERVICE_GROUPS) {
+    const groupSites = sites.filter(s =>
+      group.patterns.some(p => s.module_path.startsWith(p))
+    );
+    if (groupSites.length === 0) continue;
+    groupSites.forEach(s => assigned.add(s.id));
+
+    // Sessione SPID per questo gruppo (se almeno un sito ha auth)
+    const spidSite = groupSites.find(s => s.auth_type !== 'none');
+    const session  = spidSite ? sessions.find(se => se.site_id === spidSite.id) : null;
+
+    cards.push(renderServiceCard(group, groupSites, session));
   }
-  tbody.innerHTML = sitesData.map(site => {
-    const lr   = site.last_run;
-    const lok  = site.last_ok_run;
+
+  // Siti non assegnati a nessun gruppo
+  const others = sites.filter(s => !assigned.has(s.id));
+  if (others.length > 0) {
+    cards.push(renderServiceCard(
+      { key: 'other', name: 'Altri', icon: '🌐', patterns: [] },
+      others, null
+    ));
+  }
+
+  grid.innerHTML = cards.length
+    ? cards.join('')
+    : '<div style="padding:40px;text-align:center;color:var(--color-text-muted)">Nessun servizio configurato</div>';
+}
+
+function renderServiceCard(group, groupSites, session) {
+  // Intestazione SPID (se presente)
+  let spidHtml = '';
+  if (session) {
+    const ST = SESSION_STATUS[session.status] || SESSION_STATUS.none;
+    const isOk = session.status === 'fresh' || session.status === 'ok';
+    spidHtml = `
+      <div class="svc-spid">
+        <span class="sess-status-dot ${ST.cls}" style="font-size:10px">●</span>
+        <span class="svc-spid-label">${isOk ? (session.saved_at ? timeAgo(session.saved_at) : 'Autenticato') : ST.label}</span>
+        <button class="btn btn-sm ${isOk ? 'btn-ghost' : 'btn-primary'}"
+          onclick="loginFromSite(${session.site_id}, '${esc(session.site_name)}', '${esc(session.login_url || '')}')">
+          🔑 ${session.saved_at ? 'Rinnova' : 'Accedi'}
+        </button>
+      </div>`;
+  }
+
+  // Righe job
+  const jobsHtml = groupSites.map(site => {
+    const lr  = site.last_run;
+    const lok = site.last_ok_run;
+    const label = JOB_LABELS[site.module_path] || site.name;
+    const statusHtml = lr ? statusBadge(lr.status) : '<span class="badge badge-none">mai</span>';
+    const timeHtml   = lok
+      ? `<span class="job-time">${timeAgo(lok.started_at)}</span>`
+      : (lr ? '<span class="job-time" style="color:var(--color-text-dim)">mai ok</span>' : '<span class="job-time">-</span>');
+    const disabledBadge = site.enabled ? '' : ' <span class="badge badge-none" style="font-size:10px">off</span>';
+
     return `
-      <tr>
-        <td><strong>${esc(site.name)}</strong>${site.enabled ? '' : ' <span class="badge badge-none">disabilitato</span>'}</td>
-        <td class="url-cell"><a href="${esc(site.url)}" target="_blank" title="${esc(site.url)}">${esc(site.url)}</a></td>
-        <td>${authBadge(site.auth_type)}</td>
-        <td title="Ultima run: ${lr ? lr.started_at : 'mai'}">${lok ? timeAgo(lok.started_at) : (lr ? '<span style="color:var(--color-text-dim)">mai ok</span>' : '-')}</td>
-        <td>${lr ? statusBadge(lr.status) : '<span class="badge badge-none">mai</span>'}</td>
-        <td>
-          <div class="actions-cell">
-            <button class="btn btn-icon btn-secondary" title="Esegui ora" onclick="runSite(${site.id})">&#9654;</button>
-            ${site.auth_type !== 'none' ? `<button class="btn btn-icon btn-secondary" title="Login SPID" onclick="loginFromSite(${site.id})">&#128273;</button>` : ''}
-            <button class="btn btn-icon btn-ghost" title="Modifica" onclick="editSite(${site.id})">&#9998;</button>
-            <button class="btn btn-icon btn-danger" title="Elimina" onclick="deleteSite(${site.id}, '${esc(site.name)}')">&#128465;</button>
-          </div>
-        </td>
-      </tr>
-    `;
+      <div class="job-row">
+        <span class="job-name">${esc(label)}${disabledBadge}</span>
+        <span class="job-status-wrap">${statusHtml}${timeHtml}</span>
+        <div class="job-actions">
+          <button class="btn btn-icon btn-secondary" title="Esegui" onclick="runSite(${site.id})">&#9654;</button>
+          <button class="btn btn-icon btn-ghost"      title="Modifica" onclick="editSite(${site.id})">&#9998;</button>
+          <button class="btn btn-icon btn-danger"     title="Elimina"  onclick="deleteSite(${site.id}, '${esc(site.name)}')">&#128465;</button>
+        </div>
+      </div>`;
   }).join('');
+
+  return `
+    <div class="service-card">
+      <div class="svc-header">
+        <span class="svc-icon">${group.icon}</span>
+        <h2 class="svc-name">${esc(group.name)}</h2>
+        ${spidHtml}
+      </div>
+      <div class="svc-jobs">${jobsHtml}</div>
+    </div>`;
+}
+
+async function runSite(siteId) {
+  try {
+    const result = await post(`/api/sites/${siteId}/run`);
+    setTimeout(() => { if (currentSection === 'sites') loadSites(); }, 3000);
+  } catch (err) {
+    alert(`Errore nell'avvio della run: ${err.message}`);
+  }
 }
 
 async function runSite(siteId) {
@@ -268,14 +350,15 @@ async function runSite(siteId) {
   }
 }
 
-async function loginFromSite(siteId) {
-  // Fetch session info for this site then delegate to the full flow
+async function loginFromSite(siteId, siteName, loginUrl) {
+  if (siteName && loginUrl !== undefined) {
+    startLogin(siteId, siteName, loginUrl);
+    return;
+  }
   try {
     const s = await get(`/api/sessions/${siteId}`);
     startLogin(s.site_id, s.site_name, s.login_url || '');
-  } catch {
-    // fallback: site might not be in sessions (auth_type=none), ignore
-  }
+  } catch {}
 }
 
 async function deleteSite(siteId, name) {

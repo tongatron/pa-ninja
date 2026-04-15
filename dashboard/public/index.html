@@ -67,28 +67,18 @@
         <div id="spid-alert-panel" class="spid-alert-panel hidden"></div>
       </section>
 
-      <!-- Sites section -->
+      <!-- Sites / Dashboard section -->
       <section id="section-sites" class="section active">
         <div class="section-header">
           <h1>Dashboard</h1>
-          <button id="btn-add-site" class="btn btn-primary">+ Aggiungi sito</button>
+          <div style="display:flex;gap:8px">
+            <button id="btn-run-all" class="btn btn-primary">&#9654; Esegui tutti ora</button>
+            <button id="btn-add-site" class="btn btn-secondary">+ Aggiungi</button>
+          </div>
         </div>
-        <div class="table-container">
-          <table id="sites-table">
-            <thead>
-              <tr>
-                <th>Nome</th>
-                <th>URL</th>
-                <th>Auth</th>
-                <th>Ultima OK</th>
-                <th>Status</th>
-                <th>Azioni</th>
-              </tr>
-            </thead>
-            <tbody id="sites-tbody">
-              <tr><td colspan="6" class="loading">Caricamento...</td></tr>
-            </tbody>
-          </table>
+        <div id="run-all-status" class="alert hidden"></div>
+        <div id="services-grid" class="services-grid">
+          <div class="loading" style="padding:40px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>
         </div>
       </section>
 
