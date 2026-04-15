@@ -22,117 +22,34 @@ const del = (path) => api('DELETE', path);
 // ── Navigation ────────────────────────────────────────────────────────────────
 
 let currentSection = 'sites';
-let currentJobFilter = null; // siteId per filtro risultati
 
-// Destinazione di navigazione per ogni job (module_path → section + azione)
-const JOB_NAV_TARGET = {
-  'lavoro-piemonte':           { section: 'results' },
-  'lavoro-piemonte-documenti': { section: 'results' },
-  'piemonte-tu-messaggi':      { section: 'messages' },
-  'esse3-unito':               { section: 'unito' },
-};
-
-function navigate(section, opts = {}) {
+function navigate(section) {
   document.querySelectorAll('.section').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('.nav-link, .nav-job').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
 
   const sectionEl = document.getElementById(`section-${section}`);
-  if (sectionEl) sectionEl.classList.add('active');
+  const linkEl = document.querySelector(`.nav-link[data-section="${section}"]`);
 
-  // Evidenzia il link attivo (servizio o job)
-  if (opts.jobModulePath) {
-    const jobEl = document.querySelector(`.nav-job[data-module="${opts.jobModulePath}"]`);
-    if (jobEl) jobEl.classList.add('active');
-  } else {
-    const linkEl = document.querySelector(`.nav-link[data-section="${section}"]`);
-    if (linkEl) linkEl.classList.add('active');
-  }
+  if (sectionEl) sectionEl.classList.add('active');
+  if (linkEl) linkEl.classList.add('active');
 
   currentSection = section;
-  currentJobFilter = opts.siteId || null;
 
-  if (section === 'sites')    { loadSites(); }
-  else if (section === 'results') {
-    loadResultsFilters();
-    if (opts.siteId) {
-      // Pre-imposta il filtro sito e lancia la ricerca
-      setTimeout(() => {
-        const sel = document.getElementById('filter-site');
-        if (sel) sel.value = String(opts.siteId);
-        loadResults();
-      }, 100);
-    } else {
-      loadResults();
-    }
-  }
+  // Load section data
+  if (section === 'dashboard') loadDashboard();
+  else if (section === 'sites') { loadSites(); }
+  else if (section === 'results') { loadResultsFilters(); loadResults(); }
   else if (section === 'messages') loadMessages();
   else if (section === 'sessions') loadSessions();
-  else if (section === 'unito')    loadUnito();
+  else if (section === 'unito') loadUnito();
 }
 
-// ── Build nav dinamico ────────────────────────────────────────────────────────
-
-function buildNav(sites) {
-  const nav = document.getElementById('main-nav');
-  if (!nav) return;
-
-  // Raggruppa sites per SERVICE_GROUPS
-  const rows = [];
-
-  for (const group of SERVICE_GROUPS) {
-    const groupSites = sites.filter(s =>
-      group.patterns.some(p => s.module_path.startsWith(p))
-    );
-    if (groupSites.length === 0) continue;
-
-    // Voce servizio (header, non cliccabile come sezione)
-    rows.push(`
-      <li class="nav-service-item">
-        <span class="nav-service-label">
-          <span class="nav-icon">${group.icon}</span>${esc(group.name)}
-        </span>
-        <ul class="nav-job-list">
-          ${groupSites.map(s => {
-            const label = JOB_LABELS[s.module_path] || s.name;
-            const target = JOB_NAV_TARGET[s.module_path] || { section: 'sites' };
-            return `<li>
-              <a class="nav-job" href="#"
-                data-module="${esc(s.module_path)}"
-                data-section="${target.section}"
-                data-site-id="${s.id}">
-                <span class="nav-job-dot">›</span>${esc(label)}
-              </a>
-            </li>`;
-          }).join('')}
-        </ul>
-      </li>`);
-  }
-
-  // Separatore + voci generali
-  rows.push(`<li class="nav-divider"></li>`);
-  rows.push(`<li><a class="nav-link" data-section="results" href="#">
-    <span class="nav-icon">&#x1F4CB;</span> Risultati
-  </a></li>`);
-
-  nav.innerHTML = rows.join('');
-
-  // Event listeners
-  nav.querySelectorAll('.nav-link').forEach(link => {
-    link.addEventListener('click', e => {
-      e.preventDefault();
-      navigate(link.dataset.section);
-    });
+document.querySelectorAll('.nav-link').forEach(link => {
+  link.addEventListener('click', e => {
+    e.preventDefault();
+    navigate(link.dataset.section);
   });
-  nav.querySelectorAll('.nav-job').forEach(job => {
-    job.addEventListener('click', e => {
-      e.preventDefault();
-      navigate(job.dataset.section, {
-        jobModulePath: job.dataset.module,
-        siteId: job.dataset.siteId ? Number(job.dataset.siteId) : null,
-      });
-    });
-  });
-}
+});
 
 // ── Utility ───────────────────────────────────────────────────────────────────
 
@@ -323,7 +240,6 @@ async function loadSites() {
       get('/api/sessions'),
     ]);
     sitesData = sites;
-    buildNav(sites);
     renderServiceCards(sites, sessions);
     renderSessionsGrid(sessions);
     updateSpidAlert((sessions || []).filter(s => s.status === 'expired' || s.status === 'none').length);
@@ -1031,9 +947,4 @@ async function loadUnito(force = false) {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
-// Nav di default prima che arrivi l'API
-document.getElementById('main-nav').innerHTML = `
-  <li><a class="nav-link active" data-section="sites" href="#" onclick="navigate('sites');return false;">
-    <span class="nav-icon">&#x1F4CA;</span> Dashboard
-  </a></li>`;
 navigate('sites');
