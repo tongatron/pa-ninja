@@ -26,8 +26,8 @@ let currentJobFilter = null; // siteId per filtro risultati
 
 // Destinazione di navigazione per ogni job (module_path → section + azione)
 const JOB_NAV_TARGET = {
-  'lavoro-piemonte':           { section: 'sites' },
-  'lavoro-piemonte-documenti': { section: 'sites' },
+  'lavoro-piemonte':           { section: 'results' },
+  'lavoro-piemonte-documenti': { section: 'results' },
   'piemonte-tu-messaggi':      { section: 'messages' },
   'esse3-unito':               { section: 'unito' },
 };
@@ -109,6 +109,10 @@ function buildNav(sites) {
   }
 
   // Separatore + voci generali
+  rows.push(`<li class="nav-divider"></li>`);
+  rows.push(`<li><a class="nav-link" data-section="results" href="#">
+    <span class="nav-icon">&#x1F4CB;</span> Risultati
+  </a></li>`);
 
   nav.innerHTML = rows.join('');
 
