@@ -23,31 +23,42 @@ const del = (path) => api('DELETE', path);
 
 let currentSection = 'sites';
 
-function navigate(section) {
+function navigate(section, modulePath) {
   document.querySelectorAll('.section').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.nav-link, .nav-job').forEach(el => el.classList.remove('active'));
 
   const sectionEl = document.getElementById(`section-${section}`);
-  const linkEl = document.querySelector(`.nav-link[data-section="${section}"]`);
-
   if (sectionEl) sectionEl.classList.add('active');
-  if (linkEl) linkEl.classList.add('active');
+
+  if (modulePath) {
+    const jobEl = document.querySelector(`.nav-job[data-module="${modulePath}"]`);
+    if (jobEl) jobEl.classList.add('active');
+  } else {
+    const linkEl = document.querySelector(`.nav-link[data-section="${section}"]`);
+    if (linkEl) linkEl.classList.add('active');
+  }
 
   currentSection = section;
 
-  // Load section data
   if (section === 'dashboard') loadDashboard();
-  else if (section === 'sites') { loadSites(); }
-  else if (section === 'results') { loadResultsFilters(); loadResults(); }
+  else if (section === 'sites')    { loadSites(); }
+  else if (section === 'results')  { loadResultsFilters(); loadResults(); }
   else if (section === 'messages') loadMessages();
   else if (section === 'sessions') loadSessions();
-  else if (section === 'unito') loadUnito();
+  else if (section === 'unito')    loadUnito();
 }
 
 document.querySelectorAll('.nav-link').forEach(link => {
   link.addEventListener('click', e => {
     e.preventDefault();
     navigate(link.dataset.section);
+  });
+});
+
+document.querySelectorAll('.nav-job').forEach(job => {
+  job.addEventListener('click', e => {
+    e.preventDefault();
+    navigate(job.dataset.section, job.dataset.module);
   });
 });
 

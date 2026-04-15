@@ -99,6 +99,45 @@ a { color: var(--color-primary); text-decoration: none; }
 
 .nav-icon { font-size: 16px; }
 
+/* ── Nav gerarchico ──────────────────────────────────────────────────────────── */
+.nav-service-item { margin-bottom: 2px; }
+
+.nav-service-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px 3px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--color-text-dim);
+  user-select: none;
+}
+
+.nav-job-list { list-style: none; padding: 0; margin: 0 0 2px; }
+
+.nav-job {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 12px 7px 32px;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 400;
+  transition: background var(--transition), color var(--transition);
+}
+.nav-job:hover { background: var(--color-surface-2); color: var(--color-text); }
+.nav-job.active {
+  background: rgba(91,124,246,0.13);
+  color: var(--color-primary-h);
+  font-weight: 600;
+}
+.nav-job-dot { color: var(--color-text-dim); font-size: 13px; }
+
+.nav-divider { height: 1px; background: var(--color-border); margin: 8px 12px; }
+
 .sidebar-footer {
   padding: 12px 16px;
   border-top: 1px solid var(--color-border);
