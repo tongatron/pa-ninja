@@ -23,12 +23,18 @@ function getSession(siteName) {
     throw new Error('Invalid session cookies stored in DB');
   }
 
+  let storageState = null;
+  if (sessionRow.storage_state) {
+    try { storageState = JSON.parse(sessionRow.storage_state); } catch {}
+  }
+
   const cookieHeader = cookies
     .map(c => `${c.name}=${c.value}`)
     .join('; ');
 
   return {
     cookies,
+    storageState,
     cookieHeader,
     savedAt: sessionRow.saved_at,
 
@@ -143,7 +149,12 @@ async function login(siteName) {
 
   console.log('Login detected! Saving session cookies...');
 
+  // Breve attesa extra per assicurarsi che tutti i cookie finali siano impostati
+  await page.waitForLoadState('networkidle').catch(() => {});
+
   const cookies = await context.cookies();
+  const storageState = await context.storageState();
+
   console.log(`Captured ${cookies.length} cookies from domains: ${[...new Set(cookies.map(c => c.domain))].join(', ')}`);
   if (cookies.length === 0) {
     await browser.close();
@@ -151,14 +162,15 @@ async function login(siteName) {
   }
   await browser.close();
 
-  // Save to DB
+  // Save to DB (cookies + storageState per Playwright context restore)
   db.prepare(`
-    INSERT INTO sessions (site_id, cookies, saved_at)
-    VALUES (?, ?, datetime('now'))
+    INSERT INTO sessions (site_id, cookies, storage_state, saved_at)
+    VALUES (?, ?, ?, datetime('now'))
     ON CONFLICT(site_id) DO UPDATE SET
-      cookies  = excluded.cookies,
-      saved_at = excluded.saved_at
-  `).run(site.id, JSON.stringify(cookies));
+      cookies       = excluded.cookies,
+      storage_state = excluded.storage_state,
+      saved_at      = excluded.saved_at
+  `).run(site.id, JSON.stringify(cookies), JSON.stringify(storageState));
 
   console.log(`Session saved for "${site.name}" (${cookies.length} cookies)`);
   return cookies;

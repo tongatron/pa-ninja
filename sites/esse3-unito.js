@@ -260,8 +260,14 @@ module.exports = {
     let libHtml, carHtml;
 
     try {
-      const context = await browser.newContext();
-      await context.addCookies(session.cookies);
+      // Usa storageState se disponibile (modo corretto per Playwright),
+      // altrimenti fallback su addCookies
+      const context = session.storageState
+        ? await browser.newContext({ storageState: session.storageState })
+        : await browser.newContext();
+      if (!session.storageState) {
+        await context.addCookies(session.cookies);
+      }
       const page = await context.newPage();
 
       /** Naviga a un URL ESSE3 gestendo redirect-loop = sessione scaduta */
