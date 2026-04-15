@@ -37,7 +37,7 @@ function navigate(section) {
 
   // Load section data
   if (section === 'dashboard') loadDashboard();
-  else if (section === 'sites') loadSites();
+  else if (section === 'sites') { loadSites(); }
   else if (section === 'results') { loadResultsFilters(); loadResults(); }
   else if (section === 'messages') loadMessages();
   else if (section === 'sessions') loadSessions();
@@ -241,9 +241,21 @@ async function loadSites() {
     ]);
     sitesData = sites;
     renderServiceCards(sites, sessions);
+    renderSessionsGrid(sessions);
+    updateSpidAlert((sessions || []).filter(s => s.status === 'expired' || s.status === 'none').length);
   } catch (err) {
     grid.innerHTML = `<div style="color:var(--color-danger);padding:24px">Errore: ${esc(err.message)}</div>`;
   }
+}
+
+function renderSessionsGrid(sessions) {
+  const grid = document.getElementById('sessions-grid');
+  if (!grid) return;
+  if (!sessions || sessions.length === 0) {
+    grid.innerHTML = '<div style="padding:24px;text-align:center;color:var(--color-text-muted)">Nessun sito con autenticazione configurato</div>';
+    return;
+  }
+  grid.innerHTML = sessions.map(s => renderSessionCard(s)).join('');
 }
 
 function renderServiceCards(sites, sessions) {

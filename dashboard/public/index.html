@@ -24,10 +24,6 @@
         <li><a class="nav-link" data-section="messages" href="#">
           <span class="nav-icon">&#x2709;&#xFE0F;</span> Messaggi
         </a></li>
-        <li><a class="nav-link" data-section="sessions" href="#">
-          <span class="nav-icon">&#x1F510;</span> Accessi SPID
-          <span id="nav-spid-alert" class="nav-alert hidden"></span>
-        </a></li>
         <li><a class="nav-link" data-section="unito" href="#">
           <span class="nav-icon">&#x1F393;</span> UniTo
         </a></li>
@@ -78,6 +74,18 @@
         </div>
         <div id="run-all-status" class="alert hidden"></div>
         <div id="services-grid" class="services-grid">
+          <div class="loading" style="padding:40px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>
+        </div>
+
+        <!-- Accessi SPID inline -->
+        <div class="dashboard-sub-header">
+          <span class="nav-icon">&#x1F510;</span> Accessi SPID
+          <span id="nav-spid-alert" class="nav-alert hidden"></span>
+        </div>
+        <p class="section-desc" style="margin-bottom:12px">
+          Il pulsante <strong>Accedi</strong> apre una finestra Chromium: completa il login lì e la sessione verrà salvata automaticamente.
+        </p>
+        <div id="sessions-grid" class="sessions-grid">
           <div class="loading" style="padding:40px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>
         </div>
       </section>
