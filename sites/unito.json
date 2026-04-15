@@ -1,0 +1,21 @@
+{
+  "service": "UniTo",
+  "icon": "🎓",
+  "auth_type": "spid",
+  "jobs": [
+    {
+      "label": "Libretto",
+      "module_path": "esse3-unito",
+      "nav_section": "unito",
+      "nav_tab": "libretto",
+      "view": { "type": "unito-libretto" }
+    },
+    {
+      "label": "Carriera",
+      "module_path": "esse3-unito",
+      "nav_section": "unito",
+      "nav_tab": "carriera",
+      "view": { "type": "unito-carriera" }
+    }
+  ]
+}

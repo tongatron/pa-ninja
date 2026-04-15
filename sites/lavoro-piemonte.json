@@ -1,0 +1,18 @@
+{
+  "service": "Lavoro Piemonte",
+  "icon": "🏢",
+  "jobs": [
+    {
+      "label": "Annunci di lavoro",
+      "module_path": "lavoro-piemonte",
+      "nav_section": "results",
+      "view": { "type": "results-table", "filters": ["province", "keyword", "expires", "new-only"] }
+    },
+    {
+      "label": "Documenti",
+      "module_path": "lavoro-piemonte-documenti",
+      "nav_section": "results",
+      "view": { "type": "results-table", "filters": ["keyword"] }
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "service": "Piemonte Tu",
+  "icon": "✉️",
+  "jobs": [
+    {
+      "label": "Messaggi",
+      "module_path": "piemonte-tu-messaggi",
+      "nav_section": "messages",
+      "view": { "type": "messages-list", "filters": ["unread", "sender", "keyword", "new-only"] }
+    }
+  ]
+}

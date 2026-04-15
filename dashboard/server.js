@@ -1,6 +1,7 @@
 'use strict';
 
 const path = require('path');
+const fs = require('fs');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const express = require('express');
@@ -461,6 +462,22 @@ app.get('/api/stats', (req, res) => {
     });
 
     res.json({ activeSites, lastRun, newToday, totalResults, spidNeedAuth });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/agents — lista agenti da sites/*.json
+app.get('/api/agents', (req, res) => {
+  try {
+    const sitesDir = path.join(__dirname, '..', 'sites');
+    const files = fs.readdirSync(sitesDir).filter(f => f.endsWith('.json'));
+    const agents = files.map(f => {
+      try {
+        return JSON.parse(fs.readFileSync(path.join(sitesDir, f), 'utf8'));
+      } catch { return null; }
+    }).filter(Boolean);
+    res.json(agents);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
