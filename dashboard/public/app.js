@@ -21,7 +21,7 @@ const del = (path) => api('DELETE', path);
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 
-let currentSection = 'dashboard';
+let currentSection = 'sites';
 
 function navigate(section) {
   document.querySelectorAll('.section').forEach(el => el.classList.remove('active'));
@@ -852,4 +852,4 @@ async function loadUnito(force = false) {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
-navigate('dashboard');
+navigate('sites');

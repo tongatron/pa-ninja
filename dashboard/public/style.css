@@ -65,6 +65,7 @@ a { color: var(--color-primary); text-decoration: none; }
 }
 
 .brand-icon { font-size: 20px; }
+.brand-ninja { color: #e31919; }
 
 .nav-list {
   list-style: none;

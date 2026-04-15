@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PA Scraping Dashboard</title>
+  <title>PA Ninja</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -11,15 +11,12 @@
     <!-- Sidebar -->
     <nav class="sidebar">
       <div class="sidebar-brand">
-        <span class="brand-icon">&#x1F4CB;</span>
-        <span class="brand-name">PA Scraping</span>
+        <span class="brand-icon">🥷</span>
+        <span class="brand-name">PA <span class="brand-ninja">NINJA</span></span>
       </div>
       <ul class="nav-list">
-        <li><a class="nav-link active" data-section="dashboard" href="#">
+        <li><a class="nav-link active" data-section="sites" href="#">
           <span class="nav-icon">&#x1F4CA;</span> Dashboard
-        </a></li>
-        <li><a class="nav-link" data-section="sites" href="#">
-          <span class="nav-icon">&#x1F310;</span> Siti
         </a></li>
         <li><a class="nav-link" data-section="results" href="#">
           <span class="nav-icon">&#x1F4CB;</span> Risultati
@@ -42,8 +39,8 @@
 
     <!-- Main content -->
     <main class="content">
-      <!-- Dashboard section -->
-      <section id="section-dashboard" class="section active">
+      <!-- Dashboard section (nascosta, tenuta per compatibilità) -->
+      <section id="section-dashboard" class="section">
         <div class="section-header">
           <h1>Dashboard</h1>
           <button id="btn-run-all" class="btn btn-primary">&#9654; Esegui tutti ora</button>
@@ -71,9 +68,9 @@
       </section>
 
       <!-- Sites section -->
-      <section id="section-sites" class="section">
+      <section id="section-sites" class="section active">
         <div class="section-header">
-          <h1>Siti</h1>
+          <h1>Dashboard</h1>
           <button id="btn-add-site" class="btn btn-primary">+ Aggiungi sito</button>
         </div>
         <div class="table-container">
