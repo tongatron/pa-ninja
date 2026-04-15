@@ -5,255 +5,262 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PA Ninja</title>
   <meta name="description" content="PA Ninja è uno strumento local-first per raccogliere, consultare e organizzare informazioni provenienti da portali della Pubblica Amministrazione italiana." />
+  <meta property="og:title" content="PA Ninja" />
+  <meta property="og:description" content="Strumento local-first per monitorare portali della PA italiana." />
+  <meta property="og:image" content="pa-ninja-logo.png" />
   <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
     :root {
-      --bg: #050505;
-      --panel: #0f0f10;
-      --text: #f4f4f4;
-      --muted: #bdbdbd;
-      --red: #e31919;
-      --border: rgba(255,255,255,0.12);
+      --bg-left:  #0a0a0c;
+      --bg-right: #000000;
+      --surface:  #111114;
+      --border:   rgba(255,255,255,0.08);
+      --red:      #e31919;
+      --text:     #f0f0f0;
+      --muted:    #a0a0a8;
+      --dim:      #555560;
+      --font:     Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
     }
 
-    * { box-sizing: border-box; }
+    html, body { height: 100%; font-family: var(--font); background: var(--bg-left); color: var(--text); }
 
-    html, body {
-      margin: 0;
-      min-height: 100%;
-      background: var(--bg);
-      color: var(--text);
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    /* ── Layout split ───────────────────────────────────────────────────── */
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr 420px;
+      min-height: 100vh;
     }
 
-    body {
+    /* ── Left ───────────────────────────────────────────────────────────── */
+    .left {
+      padding: clamp(40px, 6vw, 80px) clamp(32px, 5vw, 72px);
       display: flex;
-      align-items: center;
+      flex-direction: column;
       justify-content: center;
-      padding: 32px 18px;
-      background-image:
-        radial-gradient(circle at top, rgba(227, 25, 25, 0.12), transparent 34%),
-        linear-gradient(180deg, rgba(255,255,255,0.02), transparent 25%);
-    }
-
-    .wrap {
-      width: min(920px, 100%);
-    }
-
-    .card {
-      background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
-      border: 1px solid var(--border);
-      border-radius: 24px;
-      padding: 34px 26px 28px;
-      box-shadow: 0 25px 80px rgba(0,0,0,0.45);
-      overflow: hidden;
+      gap: 36px;
       position: relative;
     }
-
-    .card::before {
+    .left::after {
       content: "";
       position: absolute;
-      inset: 0 0 auto 0;
-      height: 4px;
-      background: linear-gradient(90deg, transparent, var(--red), transparent);
-      opacity: 0.85;
-    }
-
-    .hero {
-      display: grid;
-      grid-template-columns: 220px 1fr;
-      gap: 28px;
-      align-items: center;
-    }
-
-    .logo-box {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 12px;
-      background: rgba(255,255,255,0.02);
-      border: 1px solid rgba(255,255,255,0.06);
-      border-radius: 20px;
-    }
-
-    .logo-box img {
-      width: 100%;
-      max-width: 190px;
-      height: auto;
-      display: block;
+      inset: 0;
+      background: radial-gradient(ellipse at top left, rgba(227,25,25,0.07), transparent 60%);
+      pointer-events: none;
     }
 
     .eyebrow {
-      display: inline-block;
-      color: var(--red);
-      font-size: 0.82rem;
-      font-weight: 800;
-      letter-spacing: 0.16em;
-      text-transform: uppercase;
-      margin-bottom: 10px;
-    }
-
-    h1 {
-      margin: 0;
-      font-size: clamp(2.2rem, 5vw, 4.4rem);
-      line-height: 0.95;
-      letter-spacing: -0.04em;
-      text-transform: uppercase;
-    }
-
-    h1 .accent { color: var(--red); }
-
-    .lead {
-      margin: 16px 0 0;
-      font-size: 1.05rem;
-      line-height: 1.65;
-      color: var(--muted);
-      max-width: 60ch;
-    }
-
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 16px;
-      margin-top: 28px;
-    }
-
-    .panel {
-      padding: 20px;
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 18px;
-    }
-
-    .panel h2 {
-      margin: 0 0 12px;
-      font-size: 1rem;
-      letter-spacing: 0.02em;
-    }
-
-    .panel p,
-    .panel li {
-      color: var(--muted);
-      line-height: 1.65;
-      font-size: 0.98rem;
-    }
-
-    ul {
-      margin: 0;
-      padding-left: 18px;
-    }
-
-    .cta-row {
-      display: flex;
-      justify-content: center;
-      margin-top: 28px;
-    }
-
-    .github-btn {
       display: inline-flex;
       align-items: center;
-      gap: 12px;
-      justify-content: center;
-      min-width: 240px;
-      padding: 16px 22px;
-      border-radius: 999px;
-      border: 1px solid rgba(255,255,255,0.12);
-      background: #fff;
-      color: #050505;
-      text-decoration: none;
-      font-weight: 800;
-      letter-spacing: 0.01em;
-      transition: transform 180ms ease, box-shadow 180ms ease, background 180ms ease;
-      box-shadow: 0 12px 28px rgba(0,0,0,0.32);
+      gap: 10px;
+      color: var(--red);
+      font-size: 0.76rem;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
     }
-
-    .github-btn:hover {
-      transform: translateY(-2px);
-      background: #f1f1f1;
-      box-shadow: 0 18px 38px rgba(0,0,0,0.4);
-    }
-
-    .github-btn svg {
-      width: 22px;
-      height: 22px;
-      fill: currentColor;
+    .eyebrow::before {
+      content: "";
+      width: 26px; height: 2px;
+      background: var(--red);
+      border-radius: 2px;
       flex: 0 0 auto;
     }
 
-    .footer-note {
-      margin-top: 16px;
-      text-align: center;
-      color: #8f8f8f;
-      font-size: 0.9rem;
+    h1 {
+      line-height: 0.92;
+      font-size: clamp(3.6rem, 8vw, 6.8rem);
+      font-weight: 900;
+      letter-spacing: -0.05em;
+      text-transform: uppercase;
+    }
+    h1 .accent { color: var(--red); }
+
+    .lead {
+      font-size: 1.03rem;
+      line-height: 1.72;
+      color: var(--muted);
+      max-width: 52ch;
     }
 
-    @media (max-width: 760px) {
-      .hero,
-      .grid {
-        grid-template-columns: 1fr;
-      }
+    /* ── Features ───────────────────────────────────────────────────────── */
+    .features { display: flex; flex-direction: column; gap: 10px; }
 
-      .logo-box img {
-        max-width: 160px;
-      }
+    .feature {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      padding: 15px 18px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      transition: border-color 0.2s;
+    }
+    .feature:hover { border-color: rgba(227,25,25,0.3); }
 
-      .card {
-        padding: 24px 18px 22px;
+    .fi { font-size: 1.1rem; flex: 0 0 auto; margin-top: 1px; }
+
+    .ft strong { display: block; font-size: 0.88rem; font-weight: 700; margin-bottom: 2px; }
+    .ft span   { font-size: 0.83rem; color: var(--muted); line-height: 1.5; }
+
+    /* ── CTA ────────────────────────────────────────────────────────────── */
+    .cta-row { display: flex; flex-wrap: wrap; gap: 12px; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      padding: 13px 22px;
+      border-radius: 10px;
+      font-family: var(--font);
+      font-size: 0.88rem;
+      font-weight: 700;
+      text-decoration: none;
+      transition: transform 0.17s, box-shadow 0.17s, background 0.17s;
+      border: none; cursor: pointer;
+    }
+    .btn:hover { transform: translateY(-2px); }
+
+    .btn-primary {
+      background: var(--red);
+      color: #fff;
+      box-shadow: 0 6px 20px rgba(227,25,25,0.35);
+    }
+    .btn-primary:hover { background: #c91515; box-shadow: 0 10px 28px rgba(227,25,25,0.45); }
+
+    .btn-ghost {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-ghost:hover { background: #1a1a1f; }
+
+    .btn svg { width: 17px; height: 17px; fill: currentColor; flex: 0 0 auto; }
+
+    .footer-note { font-size: 0.78rem; color: var(--dim); }
+    .footer-note a { color: var(--dim); text-decoration: underline; }
+
+    /* ── Right: sfondo nero con logo ────────────────────────────────────── */
+    .right {
+      background: var(--bg-right);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 48px 32px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+    }
+
+    .logo-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 22px;
+    }
+
+    .logo-wrap img {
+      width: min(300px, 80%);
+      height: auto;
+      display: block;
+      filter: drop-shadow(0 0 48px rgba(227,25,25,0.22));
+    }
+
+    .logo-tagline {
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.24em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.18);
+      text-align: center;
+    }
+
+    /* ── Responsive ─────────────────────────────────────────────────────── */
+    @media (max-width: 860px) {
+      .layout { grid-template-columns: 1fr; }
+      .right {
+        position: relative;
+        height: auto;
+        min-height: 300px;
+        padding: 48px 24px;
+        order: -1;
       }
+      .logo-wrap img { width: min(200px, 55%); }
     }
   </style>
 </head>
 <body>
-  <main class="wrap">
-    <section class="card">
-      <div class="hero">
-        <div class="logo-box">
-          <img src="pa-ninja-logo.png" alt="Logo PA Ninja" />
+  <div class="layout">
+
+    <!-- ── Sinistra: presentazione ───────────────────────────────────────── -->
+    <main class="left">
+      <span class="eyebrow">Local-first · PA automation</span>
+
+      <h1>PA <span class="accent">Ninja</span></h1>
+
+      <p class="lead">
+        Strumento locale per raccogliere, consultare e organizzare informazioni
+        dai portali della Pubblica Amministrazione italiana.
+        Centralizza dati dispersi, riduce ricerche ripetitive e costruisce
+        uno storico personale sul tuo computer.
+      </p>
+
+      <div class="features">
+        <div class="feature">
+          <span class="fi">🗄️</span>
+          <div class="ft">
+            <strong>Local-first</strong>
+            <span>I dati restano sul tuo computer — nessun cloud, nessuna registrazione.</span>
+          </div>
         </div>
-
-        <div>
-          <span class="eyebrow">Local-first / PA automation</span>
-          <h1>PA <span class="accent">Ninja</span></h1>
-          <p class="lead">
-            Strumento locale per consultare, raccogliere e organizzare informazioni provenienti da portali della Pubblica Amministrazione italiana.
-            Nasce per centralizzare dati dispersi, ridurre ricerche ripetitive e costruire uno storico personale sul proprio computer.
-          </p>
+        <div class="feature">
+          <span class="fi">🔌</span>
+          <div class="ft">
+            <strong>Modulare</strong>
+            <span>Ogni portale è un connettore indipendente: facile aggiungerne di nuovi.</span>
+          </div>
         </div>
-      </div>
-
-      <div class="grid">
-        <article class="panel">
-          <h2>Cosa fa</h2>
-          <ul>
-            <li>Raccoglie dati da portali pubblici e servizi online.</li>
-            <li>Normalizza le informazioni in un formato unico.</li>
-            <li>Salva tutto in un database locale SQLite.</li>
-            <li>Espone una dashboard web semplice e leggibile.</li>
-            <li>Evidenzia i nuovi risultati rispetto ai run precedenti.</li>
-          </ul>
-        </article>
-
-        <article class="panel">
-          <h2>Filosofia del progetto</h2>
-          <ul>
-            <li><strong>Local-first</strong>: i dati restano sul tuo computer.</li>
-            <li><strong>User-controlled</strong>: sei tu ad avviare le operazioni.</li>
-            <li><strong>Progressive access</strong>: prima API ufficiali, poi pagine pubbliche, infine browser assistito.</li>
-            <li><strong>Modulare</strong>: ogni sito è trattato come un connettore indipendente.</li>
-          </ul>
-        </article>
+        <div class="feature">
+          <span class="fi">🔔</span>
+          <div class="ft">
+            <strong>Nuovi risultati in evidenza</strong>
+            <span>Confronto automatico con la run precedente, zero rumore.</span>
+          </div>
+        </div>
+        <div class="feature">
+          <span class="fi">🔐</span>
+          <div class="ft">
+            <strong>SPID / autenticazione assistita</strong>
+            <span>Login tramite browser Chromium guidato; sessione salvata automaticamente.</span>
+          </div>
+        </div>
       </div>
 
       <div class="cta-row">
-        <a class="github-btn" href="https://github.com/tongatron/PA-scraping" target="_blank" rel="noopener noreferrer">
-          <svg viewBox="0 0 16 16" aria-hidden="true">
-            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.66 7.66 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"></path>
-          </svg>
-          Vai alla repository GitHub
+        <a class="btn btn-primary" href="dashboard/">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h8v8H3V3zm0 10h8v8H3v-8zm10-10h8v8h-8V3zm0 10h8v8h-8v-8z"/></svg>
+          Apri Dashboard
+        </a>
+        <a class="btn btn-ghost" href="https://github.com/tongatron/pa-ninja" target="_blank" rel="noopener noreferrer">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.66 7.66 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+          GitHub
         </a>
       </div>
 
-      
-    </section>
-  </main>
+      <p class="footer-note">
+        v0.1.0 · MIT License ·
+        <a href="https://github.com/tongatron/pa-ninja" target="_blank" rel="noopener">tongatron/pa-ninja</a>
+      </p>
+    </main>
+
+    <!-- ── Destra: sfondo nero + logo ────────────────────────────────────── -->
+    <aside class="right">
+      <div class="logo-wrap">
+        <img src="pa-ninja-logo.png" alt="PA Ninja" />
+        <span class="logo-tagline">Pubblica Amministrazione · Ninja Style</span>
+      </div>
+    </aside>
+
+  </div>
 </body>
 </html>
