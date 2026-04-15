@@ -455,7 +455,8 @@ app.get('/api/stats', (req, res) => {
     `).all();
     const spidNeedAuth = spidSites.filter(s => {
       if (!s.saved_at) return true;
-      const ageHours = (Date.now() - new Date(s.saved_at).getTime()) / 3600000;
+      // SQLite datetime('now') è UTC senza 'Z' → aggiunge Z per parsing corretto
+      const ageHours = (Date.now() - new Date(s.saved_at.replace(' ', 'T') + 'Z').getTime()) / 3600000;
       return ageHours >= 8;
     });
 

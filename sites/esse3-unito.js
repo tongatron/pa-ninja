@@ -31,36 +31,57 @@ function stripTags(html) {
 }
 
 /**
- * Estrae tutte le <table> della pagina come array di { headers, rows }.
- * Ogni riga è un array di stringhe (testo delle celle).
+ * Estrae tutte le <table> della pagina come array di righe (array di stringhe).
+ * Usa un approccio stack-based per gestire correttamente le tabelle nidificate.
  */
 function extractTables(html) {
   const out = [];
-  // Rimuovi commenti HTML
   const clean = html.replace(/<!--[\s\S]*?-->/g, '');
 
-  const tableRe = /<table[\s\S]*?<\/table>/gi;
-  const trRe    = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
-  const tdRe    = /<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi;
+  // Stack-based extraction: trova aperture e chiusure di <table>
+  const tagRe = /<(\/?)table[\s> ]/gi;
+  const stack = [];
+  let m;
 
-  let tMatch;
-  while ((tMatch = tableRe.exec(clean)) !== null) {
-    const tableHtml = tMatch[0];
-    const rows = [];
-    let tr;
-    const trRe2 = new RegExp(trRe.source, 'gi');
-    while ((tr = trRe2.exec(tableHtml)) !== null) {
-      const cols = [];
-      let td;
-      const tdRe2 = new RegExp(tdRe.source, 'gi');
-      while ((td = tdRe2.exec(tr[1])) !== null) {
-        cols.push(stripTags(td[1]));
+  while ((m = tagRe.exec(clean)) !== null) {
+    if (!m[1]) {
+      // apertura <table>
+      stack.push(m.index);
+    } else if (stack.length > 0) {
+      // chiusura </table>
+      const start = stack.pop();
+      if (stack.length === 0) {
+        // tabella di livello top
+        const tableHtml = clean.slice(start, m.index + m[0].length);
+        const rows = parseTableRows(tableHtml);
+        if (rows.length >= 2) out.push(rows);
       }
-      if (cols.some(c => c)) rows.push(cols);
     }
-    if (rows.length >= 2) out.push(rows);
   }
   return out;
+}
+
+/**
+ * Estrae le righe di una singola tabella (senza nidificazione).
+ * Ignora le sotto-tabelle nei <td>.
+ */
+function parseTableRows(tableHtml) {
+  const rows = [];
+  // Rimuovi sotto-tabelle per non confondere i <tr>
+  const flat = tableHtml.replace(/<table[\s\S]*?<\/table>/gi, '');
+  const trRe = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+  const tdRe = /<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi;
+  let tr;
+  while ((tr = trRe.exec(flat)) !== null) {
+    const cols = [];
+    let td;
+    const tdRe2 = new RegExp(tdRe.source, 'gi');
+    while ((td = tdRe2.exec(tr[1])) !== null) {
+      cols.push(stripTags(td[1]));
+    }
+    if (cols.some(c => c)) rows.push(cols);
+  }
+  return rows;
 }
 
 /**
@@ -266,7 +287,16 @@ module.exports = {
       // ── Libretto ──────────────────────────────────────────────────────────
       console.log('[esse3-unito] Fetching libretto...');
       await gotoEsse3(`${ESSE3}/auth/studente/Libretto/LibrettoHome.do`);
+      // Attendi che la pagina sia completamente caricata
+      try { await page.waitForLoadState('networkidle', { timeout: 15000 }); } catch {}
       libHtml = await page.content();
+      console.log(`[esse3-unito] Libretto HTML length: ${libHtml.length}`);
+      // Log delle tabelle trovate per debug
+      const _dbgTables = extractTables(libHtml);
+      console.log(`[esse3-unito] Tabelle trovate: ${_dbgTables.length}`);
+      _dbgTables.forEach((t, i) => {
+        console.log(`  [${i}] header: ${JSON.stringify(t[0]?.slice(0,4))}, righe: ${t.length}`);
+      });
 
       // ── Carriera ──────────────────────────────────────────────────────────
       console.log('[esse3-unito] Fetching carriera...');
