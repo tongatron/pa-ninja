@@ -1053,6 +1053,8 @@ select.filter-input { cursor: pointer; }
 
 .admin-agent-icon { font-size: 1.4rem; flex: 0 0 auto; }
 
+.admin-agent-info { flex: 1 1 auto; min-width: 0; }
+
 .admin-agent-name {
   font-size: 0.95rem;
   font-weight: 700;
@@ -1063,6 +1065,12 @@ select.filter-input { cursor: pointer; }
   font-size: 0.78rem;
   color: var(--color-text-muted);
   margin-top: 2px;
+}
+
+.admin-agent-actions {
+  display: flex;
+  gap: 6px;
+  flex: 0 0 auto;
 }
 
 .admin-job-list {

@@ -1006,9 +1006,13 @@ async function loadAdmin() {
       <div class="admin-agent-card">
         <div class="admin-agent-header">
           <span class="admin-agent-icon">${agent.icon}</span>
-          <div>
+          <div class="admin-agent-info">
             <div class="admin-agent-name">${esc(agent.service)}</div>
             <div class="admin-agent-meta">${agent.jobs.length} job${agent.jobs.length !== 1 ? 's' : ''}${agent.auth_type === 'spid' ? ' · SPID' : ''}</div>
+          </div>
+          <div class="admin-agent-actions">
+            <button class="btn btn-sm btn-secondary" onclick="exportAgent('${esc(agent._key)}')">⬇ Esporta</button>
+            <button class="btn btn-sm btn-danger"    onclick="deleteAgent('${esc(agent._key)}', '${esc(agent.service)}')">🗑</button>
           </div>
         </div>
         <ul class="admin-job-list">
@@ -1025,6 +1029,63 @@ async function loadAdmin() {
     grid.innerHTML = `<div style="color:var(--color-danger);padding:24px">Errore: ${esc(err.message)}</div>`;
   }
 }
+
+// Export: fetch agent JSON from server, trigger browser download
+async function exportAgent(key) {
+  try {
+    const agents = await get('/api/agents');
+    const agent = agents.find(a => a._key === key);
+    if (!agent) { alert('Agente non trovato'); return; }
+    // Strip internal _key before exporting
+    const { _key, ...clean } = agent;
+    const blob = new Blob([JSON.stringify(clean, null, 2)], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = `${key}.json`;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+  } catch (err) {
+    alert(`Errore durante l'esportazione: ${err.message}`);
+  }
+}
+
+// Delete agent
+async function deleteAgent(key, name) {
+  if (!confirm(`Eliminare l'agente "${name}"? Il file sites/${key}.json verrà rimosso.`)) return;
+  try {
+    await del(`/api/agents/${key}`);
+    await Promise.all([loadAdmin(), buildNav()]);
+  } catch (err) {
+    alert(`Errore: ${err.message}`);
+  }
+}
+
+// Import agent — triggered by file input
+document.getElementById('btn-import-agent').addEventListener('click', () => {
+  document.getElementById('input-import-agent').click();
+});
+
+document.getElementById('input-import-agent').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const statusEl = document.getElementById('admin-import-status');
+  e.target.value = ''; // reset so same file can be picked again
+
+  try {
+    const text = await file.text();
+    const agent = JSON.parse(text);
+    if (!agent.service || !Array.isArray(agent.jobs)) {
+      showAlert(statusEl, 'error', 'File non valido: deve avere i campi "service" e "jobs".');
+      return;
+    }
+    await post('/api/agents/import', agent);
+    showAlert(statusEl, 'success', `Agente "${agent.service}" importato con successo.`);
+    await Promise.all([loadAdmin(), buildNav()]);
+    setTimeout(() => statusEl.classList.add('hidden'), 4000);
+  } catch (err) {
+    showAlert(statusEl, 'error', `Errore durante l'importazione: ${err.message}`);
+  }
+});
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
