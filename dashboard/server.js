@@ -4,7 +4,8 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const express = require('express');
-const { initDb, getDb, getSites, getRuns, getResults } = require('../core/db');
+const { initDb, getDb, getSites, getRuns, getResults,
+        getLibretto, getLatestCarriera } = require('../core/db');
 
 const PORT = process.env.PORT || 3001;
 const app = express();
@@ -16,20 +17,28 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const db = initDb();
 
-// Seed lavoro-piemonte if sites table is empty
+// Seed siti iniziali se la tabella è vuota
 const siteCount = db.prepare('SELECT COUNT(*) AS cnt FROM sites').get().cnt;
 if (siteCount === 0) {
-  db.prepare(`
-    INSERT INTO sites (name, url, module_path, auth_type, enabled)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(
-    'Lavoro Piemonte',
-    'https://pslp.regione.piemonte.it/pslpwcl/pslpfcweb/consulta-annunci/profili-ricercati',
-    'lavoro-piemonte',
-    'none',
-    1
-  );
-  console.log('Seeded initial site: Lavoro Piemonte');
+  db.prepare(`INSERT INTO sites (name, url, module_path, auth_type, enabled) VALUES (?, ?, ?, ?, ?)`)
+    .run('Lavoro Piemonte',
+         'https://pslp.regione.piemonte.it/pslpwcl/pslpfcweb/consulta-annunci/profili-ricercati',
+         'lavoro-piemonte', 'none', 1);
+  db.prepare(`INSERT INTO sites (name, url, module_path, auth_type, enabled) VALUES (?, ?, ?, ?, ?)`)
+    .run('ESSE3 UniTo',
+         'https://esse3.unito.it/auth/studente/HomePageStudente.do',
+         'esse3-unito', 'spid', 1);
+  console.log('Seeded initial sites: Lavoro Piemonte, ESSE3 UniTo');
+} else {
+  // Aggiungi ESSE3 UniTo se non esiste ancora
+  const hasEsse3 = db.prepare(`SELECT id FROM sites WHERE module_path = 'esse3-unito'`).get();
+  if (!hasEsse3) {
+    db.prepare(`INSERT INTO sites (name, url, module_path, auth_type, enabled) VALUES (?, ?, ?, ?, ?)`)
+      .run('ESSE3 UniTo',
+           'https://esse3.unito.it/auth/studente/HomePageStudente.do',
+           'esse3-unito', 'spid', 1);
+    console.log('Seeded site: ESSE3 UniTo');
+  }
 }
 
 // Fix stale 'running' runs from previous sessions
@@ -346,11 +355,13 @@ function enrichSession(r) {
   let cookieCount = 0;
 
   if (r.saved_at) {
-    const ageMs = Date.now() - new Date(r.saved_at).getTime();
+    // SQLite datetime('now') = UTC senza 'Z' → aggiunge Z per parsing corretto
+    const ageMs = Date.now() - new Date(r.saved_at.replace(' ', 'T') + 'Z').getTime();
     sessionAgeHours = Math.round(ageMs / 360000) / 10;
     if (r.cookies) { try { cookieCount = JSON.parse(r.cookies).length; } catch {} }
-    if (sessionAgeHours < 1)      status = 'ok';
-    else if (sessionAgeHours < 8) status = 'warning';
+    if (sessionAgeHours < 0.5)    status = 'fresh';    // < 30 min
+    else if (sessionAgeHours < 2) status = 'ok';       // < 2h
+    else if (sessionAgeHours < 8) status = 'warning';  // < 8h
     else                          status = 'expired';
   }
 
@@ -397,6 +408,28 @@ app.get('/api/sessions/:siteId', (req, res) => {
     `).get(siteId);
     if (!row) return res.status(404).json({ error: 'Site not found' });
     res.json(enrichSession(row));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── UniTo endpoints ───────────────────────────────────────────────────────────
+
+// GET /api/unito/libretto
+app.get('/api/unito/libretto', (req, res) => {
+  try {
+    const exams = getLibretto();
+    res.json({ exams });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/unito/carriera
+app.get('/api/unito/carriera', (req, res) => {
+  try {
+    const carriera = getLatestCarriera();
+    res.json(carriera || { data: {}, scraped_at: null });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

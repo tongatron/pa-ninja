@@ -41,6 +41,7 @@ function navigate(section) {
   else if (section === 'results') { loadResultsFilters(); loadResults(); }
   else if (section === 'messages') loadMessages();
   else if (section === 'sessions') loadSessions();
+  else if (section === 'unito') loadUnito();
 }
 
 document.querySelectorAll('.nav-link').forEach(link => {
@@ -66,11 +67,19 @@ function formatDate(str) {
   return str.slice(0, 10);
 }
 
+function parseUtc(str) {
+  // SQLite datetime('now') restituisce UTC senza suffisso 'Z'.
+  // Aggiungiamo 'Z' per evitare che il browser lo interpreti come ora locale.
+  if (!str) return NaN;
+  return new Date(str.trim().replace(' ', 'T') + 'Z').getTime();
+}
+
 function timeAgo(str) {
   if (!str) return '-';
-  const diff = Date.now() - new Date(str).getTime();
+  const diff = Date.now() - parseUtc(str);
+  if (isNaN(diff)) return '-';
   const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'appena ora';
+  if (mins < 1)  return 'appena ora';
   if (mins < 60) return `${mins}m fa`;
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h fa`;
@@ -226,13 +235,14 @@ function renderSites() {
     return;
   }
   tbody.innerHTML = sitesData.map(site => {
-    const lr = site.last_run;
+    const lr   = site.last_run;
+    const lok  = site.last_ok_run;
     return `
       <tr>
         <td><strong>${esc(site.name)}</strong>${site.enabled ? '' : ' <span class="badge badge-none">disabilitato</span>'}</td>
         <td class="url-cell"><a href="${esc(site.url)}" target="_blank" title="${esc(site.url)}">${esc(site.url)}</a></td>
         <td>${authBadge(site.auth_type)}</td>
-        <td>${lr ? timeAgo(lr.started_at) : '-'}</td>
+        <td title="Ultima run: ${lr ? lr.started_at : 'mai'}">${lok ? timeAgo(lok.started_at) : (lr ? '<span style="color:var(--color-text-dim)">mai ok</span>' : '-')}</td>
         <td>${lr ? statusBadge(lr.status) : '<span class="badge badge-none">mai</span>'}</td>
         <td>
           <div class="actions-cell">
@@ -580,6 +590,7 @@ msgModal.addEventListener('click', e => {
 // ── Sessions ──────────────────────────────────────────────────────────────────
 
 const SESSION_STATUS = {
+  fresh:   { cls: 'sess-fresh',   dot: '●', label: 'Appena autenticato' },
   ok:      { cls: 'sess-ok',      dot: '●', label: 'Autenticato' },
   warning: { cls: 'sess-warning', dot: '●', label: 'Sessione datata' },
   expired: { cls: 'sess-expired', dot: '●', label: 'Probabilmente scaduta' },
@@ -721,6 +732,123 @@ document.getElementById('login-banner-cancel').addEventListener('click', () => {
   stopLoginPoll();
   hideLoginBanner();
 });
+
+// ── UniTo ─────────────────────────────────────────────────────────────────────
+
+let _unitoLoaded = false;
+
+// Tab switching
+document.querySelectorAll('.unito-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.unito-tab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.unito-panel').forEach(p => p.classList.add('hidden'));
+    btn.classList.add('active');
+    document.getElementById(`unito-tab-${btn.dataset.tab}`).classList.remove('hidden');
+  });
+});
+
+function votoClass(v) {
+  if (!v) return '';
+  const s = String(v).trim();
+  if (s === '30L' || s === '30 L') return 'voto-30l';
+  const n = parseInt(s);
+  if (n === 30) return 'voto-30l';
+  if (n >= 27)  return 'voto-high';
+  if (n >= 24)  return 'voto-mid';
+  if (n >= 18)  return 'voto-low';
+  return '';
+}
+
+function renderLibretto(exams) {
+  const tbody = document.getElementById('unito-libretto-tbody');
+  const summary = document.getElementById('unito-libretto-summary');
+
+  if (!exams.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="loading">Nessun esame trovato — esegui lo scraping dalla sezione Siti.</td></tr>';
+    summary.classList.add('hidden');
+    return;
+  }
+
+  // Calcola statistiche
+  let totalCfu = 0, weightedSum = 0, gradeCount = 0;
+  exams.forEach(e => {
+    if (e.cfu) totalCfu += e.cfu;
+    const n = parseInt(e.voto);
+    if (!isNaN(n) && n >= 18 && e.cfu) {
+      weightedSum += n * e.cfu;
+      gradeCount++;
+    }
+  });
+  const superati = exams.filter(e => /superato/i.test(e.stato || '') || (e.voto && parseInt(e.voto) >= 18)).length;
+  const mediaP = totalCfu > 0 ? (weightedSum / totalCfu).toFixed(2) : null;
+  const mediaA = gradeCount > 0
+    ? (exams.filter(e => parseInt(e.voto) >= 18)
+            .reduce((s, e) => s + parseInt(e.voto), 0) / gradeCount).toFixed(2)
+    : null;
+
+  summary.innerHTML = [
+    `<span class="unito-stat"><strong>${superati}</strong> esami superati</span>`,
+    totalCfu ? `<span class="unito-stat"><strong>${totalCfu}</strong> CFU</span>` : '',
+    mediaA    ? `<span class="unito-stat"><strong>${mediaA}</strong> media aritm.</span>` : '',
+    mediaP    ? `<span class="unito-stat"><strong>${mediaP}</strong> media pesata</span>` : '',
+  ].filter(Boolean).join('');
+  summary.classList.remove('hidden');
+
+  // Tabella
+  tbody.innerHTML = exams.map(e => {
+    const vc = votoClass(e.voto);
+    const statoHtml = /superato/i.test(e.stato || '')
+      ? `<span class="badge badge-ok">${esc(e.stato)}</span>`
+      : e.stato ? esc(e.stato) : '';
+    return `<tr>
+      <td>${esc(e.codice || '')}</td>
+      <td>${esc(e.materia)}</td>
+      <td>${e.cfu || ''}</td>
+      <td class="${vc}">${esc(e.voto || '')}</td>
+      <td>${e.data_esame ? e.data_esame.slice(0, 10) : ''}</td>
+      <td>${statoHtml}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderCarriera(data) {
+  const grid = document.getElementById('unito-carriera-grid');
+  if (!data || !Object.keys(data.data || {}).length) {
+    grid.innerHTML = '<div class="loading" style="padding:32px;text-align:center;color:var(--color-text-muted)">Nessun dato — esegui lo scraping dalla sezione Siti.</div>';
+    return;
+  }
+  const ts = data.scraped_at
+    ? `<p class="unito-scraped-at">Aggiornato: ${new Date(data.scraped_at).toLocaleString('it-IT')}</p>`
+    : '';
+  const cards = Object.entries(data.data)
+    .filter(([k]) => !k.startsWith('_'))
+    .map(([k, v]) => `<div class="unito-info-card">
+      <div class="info-label">${esc(k)}</div>
+      <div class="info-value">${esc(v)}</div>
+    </div>`).join('');
+  grid.innerHTML = ts + `<div class="unito-info-grid">${cards}</div>`;
+}
+
+async function loadUnito(force = false) {
+  if (_unitoLoaded && !force) return;
+  try {
+    document.getElementById('unito-libretto-tbody').innerHTML =
+      '<tr><td colspan="6" class="loading">Caricamento...</td></tr>';
+    document.getElementById('unito-carriera-grid').innerHTML =
+      '<div class="loading" style="padding:32px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>';
+
+    const [libData, carData] = await Promise.all([
+      get('/api/unito/libretto'),
+      get('/api/unito/carriera'),
+    ]);
+    renderLibretto(libData.exams || []);
+    renderCarriera(carData);
+    _unitoLoaded = true;
+  } catch (err) {
+    document.getElementById('unito-libretto-tbody').innerHTML =
+      `<tr><td colspan="6" style="color:var(--color-danger);padding:16px">${esc(err.message)}</td></tr>`;
+  }
+}
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 

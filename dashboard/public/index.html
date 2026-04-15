@@ -31,6 +31,9 @@
           <span class="nav-icon">&#x1F510;</span> Accessi SPID
           <span id="nav-spid-alert" class="nav-alert hidden"></span>
         </a></li>
+        <li><a class="nav-link" data-section="unito" href="#">
+          <span class="nav-icon">&#x1F393;</span> UniTo
+        </a></li>
       </ul>
       <div class="sidebar-footer">
         <span class="version">v0.1.0</span>
@@ -80,7 +83,7 @@
                 <th>Nome</th>
                 <th>URL</th>
                 <th>Auth</th>
-                <th>Ultima run</th>
+                <th>Ultima OK</th>
                 <th>Status</th>
                 <th>Azioni</th>
               </tr>
@@ -156,6 +159,49 @@
         <div id="msg-count" style="font-size:12px;color:var(--color-text-muted);margin-bottom:12px"></div>
         <div id="messages-grid" class="messages-grid">
           <div class="loading" style="padding:32px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>
+        </div>
+      </section>
+
+      <!-- UniTo section -->
+      <section id="section-unito" class="section">
+        <div class="section-header">
+          <h1>🎓 UniTo – ESSE3</h1>
+          <button id="btn-unito-refresh" class="btn btn-secondary" onclick="loadUnito(true)">↻ Aggiorna</button>
+        </div>
+
+        <!-- Tabs -->
+        <div class="unito-tabs">
+          <button class="unito-tab active" data-tab="libretto">📚 Libretto</button>
+          <button class="unito-tab" data-tab="carriera">🎓 Carriera</button>
+        </div>
+
+        <!-- Libretto -->
+        <div id="unito-tab-libretto" class="unito-panel">
+          <div id="unito-libretto-summary" class="unito-summary hidden"></div>
+          <div class="table-container">
+            <table id="unito-libretto-table">
+              <thead>
+                <tr>
+                  <th>Codice</th>
+                  <th>Materia</th>
+                  <th>CFU</th>
+                  <th>Voto</th>
+                  <th>Data</th>
+                  <th>Stato</th>
+                </tr>
+              </thead>
+              <tbody id="unito-libretto-tbody">
+                <tr><td colspan="6" class="loading">Caricamento...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Carriera -->
+        <div id="unito-tab-carriera" class="unito-panel hidden">
+          <div id="unito-carriera-grid" class="unito-info-grid">
+            <div class="loading" style="padding:32px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>
+          </div>
         </div>
       </section>
 
