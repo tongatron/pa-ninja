@@ -39,6 +39,7 @@ function navigate(section) {
   if (section === 'dashboard') loadDashboard();
   else if (section === 'sites') loadSites();
   else if (section === 'results') { loadResultsFilters(); loadResults(); }
+  else if (section === 'messages') loadMessages();
   else if (section === 'sessions') loadSessions();
 }
 
@@ -103,8 +104,41 @@ async function loadDashboard() {
     document.getElementById('stat-new-today').textContent = stats.newToday;
     document.getElementById('stat-last-run').textContent =
       stats.lastRun ? timeAgo(stats.lastRun.started_at) : '-';
+
+    // SPID alert panel
+    const panel = document.getElementById('spid-alert-panel');
+    const need = stats.spidNeedAuth || [];
+    if (need.length > 0) {
+      panel.classList.remove('hidden');
+      panel.innerHTML = `
+        <div class="spid-alert-icon">🔐</div>
+        <div class="spid-alert-body">
+          <strong>${need.length === 1 ? '1 sito richiede' : `${need.length} siti richiedono`} autenticazione SPID</strong>
+          <div class="spid-alert-list">${need.map(s => `<span>${esc(s.name)}</span>`).join('')}</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="navigate('sessions')">Vai agli Accessi →</button>
+      `;
+    } else {
+      panel.classList.add('hidden');
+    }
+    updateSpidAlert(need.length);
   } catch (err) {
     console.error('loadDashboard:', err);
+  }
+}
+
+function updateSpidAlert(count) {
+  const dot = document.getElementById('nav-spid-alert');
+  if (count === undefined) {
+    // called without count → re-fetch
+    get('/api/stats').then(s => updateSpidAlert((s.spidNeedAuth || []).length)).catch(() => {});
+    return;
+  }
+  if (count > 0) {
+    dot.textContent = count;
+    dot.classList.remove('hidden');
+  } else {
+    dot.classList.add('hidden');
   }
 }
 
@@ -176,7 +210,7 @@ let sitesData = [];
 
 async function loadSites() {
   const tbody = document.getElementById('sites-tbody');
-  tbody.innerHTML = '<tr><td colspan="7" class="loading">Caricamento...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="6" class="loading">Caricamento...</td></tr>';
   try {
     sitesData = await get('/api/sites');
     renderSites();
@@ -188,7 +222,7 @@ async function loadSites() {
 function renderSites() {
   const tbody = document.getElementById('sites-tbody');
   if (sitesData.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" class="loading">Nessun sito configurato</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="loading">Nessun sito configurato</td></tr>';
     return;
   }
   tbody.innerHTML = sitesData.map(site => {
@@ -198,13 +232,12 @@ function renderSites() {
         <td><strong>${esc(site.name)}</strong>${site.enabled ? '' : ' <span class="badge badge-none">disabilitato</span>'}</td>
         <td class="url-cell"><a href="${esc(site.url)}" target="_blank" title="${esc(site.url)}">${esc(site.url)}</a></td>
         <td>${authBadge(site.auth_type)}</td>
-        <td><code>${esc(site.schedule || '-')}</code></td>
         <td>${lr ? timeAgo(lr.started_at) : '-'}</td>
         <td>${lr ? statusBadge(lr.status) : '<span class="badge badge-none">mai</span>'}</td>
         <td>
           <div class="actions-cell">
             <button class="btn btn-icon btn-secondary" title="Esegui ora" onclick="runSite(${site.id})">&#9654;</button>
-            ${site.auth_type !== 'none' ? `<button class="btn btn-icon btn-secondary" title="Login SPID" onclick="loginSite(${site.id})">&#128273;</button>` : ''}
+            ${site.auth_type !== 'none' ? `<button class="btn btn-icon btn-secondary" title="Login SPID" onclick="loginFromSite(${site.id})">&#128273;</button>` : ''}
             <button class="btn btn-icon btn-ghost" title="Modifica" onclick="editSite(${site.id})">&#9998;</button>
             <button class="btn btn-icon btn-danger" title="Elimina" onclick="deleteSite(${site.id}, '${esc(site.name)}')">&#128465;</button>
           </div>
@@ -225,12 +258,13 @@ async function runSite(siteId) {
   }
 }
 
-async function loginSite(siteId) {
+async function loginFromSite(siteId) {
+  // Fetch session info for this site then delegate to the full flow
   try {
-    const result = await post(`/api/sites/${siteId}/login`);
-    alert(result.message + '\n\n' + (result.instructions || ''));
-  } catch (err) {
-    alert(`Errore: ${err.message}`);
+    const s = await get(`/api/sessions/${siteId}`);
+    startLogin(s.site_id, s.site_name, s.login_url || '');
+  } catch {
+    // fallback: site might not be in sessions (auth_type=none), ignore
   }
 }
 
@@ -254,7 +288,6 @@ function openSiteModal(site = null) {
   document.getElementById('site-name').value = site ? site.name : '';
   document.getElementById('site-url').value = site ? site.url : '';
   document.getElementById('site-module').value = site ? site.module_path : '';
-  document.getElementById('site-schedule').value = site ? (site.schedule || '') : '';
   document.getElementById('site-auth').value = site ? (site.auth_type || 'none') : 'none';
   document.getElementById('site-enabled').checked = site ? !!site.enabled : true;
   siteModal.classList.remove('hidden');
@@ -281,7 +314,6 @@ document.getElementById('site-form').addEventListener('submit', async e => {
     name:       document.getElementById('site-name').value,
     url:        document.getElementById('site-url').value,
     modulePath: document.getElementById('site-module').value,
-    schedule:   document.getElementById('site-schedule').value || null,
     authType:   document.getElementById('site-auth').value,
     enabled:    document.getElementById('site-enabled').checked ? 1 : 0,
   };
@@ -333,15 +365,17 @@ async function loadResults(page = 1) {
   params.set('page', page);
   params.set('limit', 50);
 
-  const siteId = document.getElementById('filter-site').value;
+  const siteId  = document.getElementById('filter-site').value;
   const province = document.getElementById('filter-province').value;
-  const keyword = document.getElementById('filter-keyword').value.trim();
-  const expires = document.getElementById('filter-expires').value;
+  const keyword  = document.getElementById('filter-keyword').value.trim();
+  const expires  = document.getElementById('filter-expires').value;
+  const newOnly  = document.getElementById('filter-new-only').checked;
 
-  if (siteId) params.set('siteId', siteId);
+  if (siteId)  params.set('siteId', siteId);
   if (province) params.set('province', province);
   if (keyword) params.set('keyword', keyword);
   if (expires) params.set('expiresAfter', expires);
+  if (newOnly) params.set('newOnly', 'true');
 
   try {
     const data = await get(`/api/results?${params}`);
@@ -351,8 +385,8 @@ async function loadResults(page = 1) {
       tbody.innerHTML = '<tr><td colspan="6" class="loading">Nessun risultato trovato</td></tr>';
     } else {
       tbody.innerHTML = data.rows.map(r => `
-        <tr class="clickable" onclick="showResultDetail(${esc(JSON.stringify(JSON.stringify(r)))})">
-          <td>${esc(r.title || '-')}</td>
+        <tr class="clickable${r.is_new ? ' row-new' : ''}" onclick="showResultDetail(${esc(JSON.stringify(JSON.stringify(r)))})">
+          <td>${r.is_new ? '<span class="badge badge-new">NUOVO</span> ' : ''}${esc(r.title || '-')}</td>
           <td>${esc(r.organization || '-')}</td>
           <td>${esc(r.location || '-')}</td>
           <td>${esc(r.province || '-')}</td>
@@ -393,6 +427,7 @@ document.getElementById('btn-reset-filters').addEventListener('click', () => {
   document.getElementById('filter-province').value = '';
   document.getElementById('filter-keyword').value = '';
   document.getElementById('filter-expires').value = '';
+  document.getElementById('filter-new-only').checked = false;
   loadResults(1);
 });
 document.getElementById('filter-keyword').addEventListener('keydown', e => {
@@ -437,30 +472,255 @@ resultModal.addEventListener('click', e => {
   if (e.target === resultModal) resultModal.classList.add('hidden');
 });
 
+// ── Messages ──────────────────────────────────────────────────────────────────
+
+async function loadMessages() {
+  const grid = document.getElementById('messages-grid');
+  const countEl = document.getElementById('msg-count');
+  grid.innerHTML = '<div class="loading" style="padding:32px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>';
+  countEl.textContent = '';
+
+  const params = new URLSearchParams();
+  const unread  = document.getElementById('msg-filter-unread').value;
+  const sender  = document.getElementById('msg-filter-sender').value.trim();
+  const keyword = document.getElementById('msg-filter-keyword').value.trim();
+  const newOnly = document.getElementById('msg-filter-new-only').checked;
+  if (unread)  params.set('unread', unread);
+  if (sender)  params.set('sender', sender);
+  if (keyword) params.set('keyword', keyword);
+  if (newOnly) params.set('newOnly', 'true');
+
+  try {
+    const messages = await get(`/api/messages?${params}`);
+
+    if (messages.length === 0) {
+      grid.innerHTML = '<div style="padding:32px;text-align:center;color:var(--color-text-muted)">Nessun messaggio trovato</div>';
+      countEl.textContent = '';
+      return;
+    }
+
+    const unreadCount = messages.filter(m => !m.read_at).length;
+    const newCount    = messages.filter(m => m.is_new).length;
+    countEl.textContent = `${messages.length} messaggi`
+      + (unreadCount ? ` · ${unreadCount} non letti` : '')
+      + (newCount    ? ` · ${newCount} nuovi` : '');
+
+    grid.innerHTML = messages.map(m => {
+      const isUnread = !m.read_at;
+      const tags = (m.tag || '').split(',').map(t => t.trim()).filter(Boolean);
+      const bodyPreview = (m.body || '').replace(/<[^>]+>/g, '').trim();
+      return `
+        <div class="message-card ${isUnread ? 'unread' : ''}${m.is_new ? ' msg-new' : ''}" onclick="showMessageDetail(${esc(JSON.stringify(JSON.stringify(m)))})">
+          <div class="message-card-header">
+            <div class="message-card-title">
+              ${m.is_new ? '<span class="badge badge-new">NUOVO</span> ' : ''}${esc(m.title)}
+            </div>
+            ${isUnread ? '<div class="message-unread-dot" title="Non letto"></div>' : ''}
+          </div>
+          <div class="message-card-meta">
+            ${m.sender ? `<span class="message-sender">${esc(m.sender)}</span>` : ''}
+            <span class="message-time">${m.timestamp ? timeAgo(m.timestamp) : formatDate(m.first_seen_at)}</span>
+          </div>
+          ${tags.length ? `<div class="message-tags">${tags.map(t => `<span class="message-tag">${esc(t)}</span>`).join('')}</div>` : ''}
+          ${bodyPreview ? `<div class="message-body-preview">${esc(bodyPreview)}</div>` : ''}
+        </div>
+      `;
+    }).join('');
+  } catch (err) {
+    grid.innerHTML = `<div style="padding:32px;text-align:center;color:var(--color-danger)">Errore: ${esc(err.message)}</div>`;
+  }
+}
+
+document.getElementById('btn-msg-search').addEventListener('click', () => loadMessages());
+document.getElementById('btn-msg-reset').addEventListener('click', () => {
+  document.getElementById('msg-filter-unread').value = '';
+  document.getElementById('msg-filter-sender').value = '';
+  document.getElementById('msg-filter-keyword').value = '';
+  document.getElementById('msg-filter-new-only').checked = false;
+  loadMessages();
+});
+document.getElementById('msg-filter-keyword').addEventListener('keydown', e => {
+  if (e.key === 'Enter') loadMessages();
+});
+
+// ── Message detail modal ──────────────────────────────────────────────────────
+
+const msgModal = document.getElementById('msg-modal');
+
+function showMessageDetail(jsonStr) {
+  const m = JSON.parse(jsonStr);
+  document.getElementById('msg-modal-title').textContent = m.title || 'Messaggio';
+
+  const tags = (m.tag || '').split(',').map(t => t.trim()).filter(Boolean);
+  const bodyHtml = (m.body || '').replace(/<[^>]+>/g, '').trim();
+
+  document.getElementById('msg-modal-body').innerHTML = `
+    <div class="message-card-meta" style="margin-bottom:14px">
+      ${m.sender ? `<span class="message-sender">${esc(m.sender)}</span>` : ''}
+      <span class="message-time">${m.timestamp ? new Date(m.timestamp).toLocaleString('it-IT') : '-'}</span>
+      ${m.read_at
+        ? `<span class="badge badge-none">Letto: ${new Date(m.read_at).toLocaleString('it-IT')}</span>`
+        : `<span class="badge badge-running">Non letto</span>`}
+    </div>
+    ${tags.length ? `<div class="message-tags" style="margin-bottom:14px">${tags.map(t => `<span class="message-tag">${esc(t)}</span>`).join('')}</div>` : ''}
+    ${bodyHtml ? `<div class="message-detail-body">${esc(bodyHtml)}</div>` : '<p style="color:var(--color-text-muted);font-size:13px">(nessun testo)</p>'}
+    ${m.call_to_action ? `<div class="message-cta"><a href="${esc(m.call_to_action)}" target="_blank" rel="noopener">→ Apri link</a></div>` : ''}
+  `;
+
+  msgModal.classList.remove('hidden');
+}
+
+document.getElementById('msg-modal-close').addEventListener('click', () => {
+  msgModal.classList.add('hidden');
+});
+msgModal.addEventListener('click', e => {
+  if (e.target === msgModal) msgModal.classList.add('hidden');
+});
+
 // ── Sessions ──────────────────────────────────────────────────────────────────
 
+const SESSION_STATUS = {
+  ok:      { cls: 'sess-ok',      dot: '●', label: 'Autenticato' },
+  warning: { cls: 'sess-warning', dot: '●', label: 'Sessione datata' },
+  expired: { cls: 'sess-expired', dot: '●', label: 'Probabilmente scaduta' },
+  none:    { cls: 'sess-none',    dot: '○', label: 'Non autenticato' },
+};
+
 async function loadSessions() {
-  const tbody = document.getElementById('sessions-tbody');
-  tbody.innerHTML = '<tr><td colspan="3" class="loading">Caricamento...</td></tr>';
+  const grid = document.getElementById('sessions-grid');
+  grid.innerHTML = '<div class="loading" style="padding:40px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>';
   try {
     const sessions = await get('/api/sessions');
     if (sessions.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="3" class="loading">Nessun sito con autenticazione SPID configurato</td></tr>';
+      grid.innerHTML = '<div style="padding:40px;text-align:center;color:var(--color-text-muted)">Nessun sito con autenticazione configurato</div>';
       return;
     }
-    tbody.innerHTML = sessions.map(s => `
-      <tr>
-        <td><strong>${esc(s.site_name)}</strong></td>
-        <td>${s.saved_at ? formatDate(s.saved_at) + ' ' + timeAgo(s.saved_at) : '<span class="badge badge-none">Non autenticato</span>'}</td>
-        <td>
-          <button class="btn btn-icon btn-secondary" title="Rinnova sessione" onclick="loginSite(${s.site_id})">&#128273; Rinnova</button>
-        </td>
-      </tr>
-    `).join('');
+    grid.innerHTML = sessions.map(s => renderSessionCard(s)).join('');
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="3" class="loading">Errore: ${esc(err.message)}</td></tr>`;
+    grid.innerHTML = `<div style="color:var(--color-danger);padding:24px">Errore: ${esc(err.message)}</div>`;
   }
 }
+
+function renderSessionCard(s) {
+  const st = SESSION_STATUS[s.status] || SESSION_STATUS.none;
+  const loginBtnLabel = s.saved_at ? '🔑 Rinnova accesso' : '🔑 Accedi con SPID';
+
+  let metaHtml = '';
+  if (s.saved_at) {
+    metaHtml = `
+      <div class="sess-meta">
+        <span>Ultimo accesso: <strong>${timeAgo(s.saved_at)}</strong></span>
+        <span class="sess-meta-sep">·</span>
+        <span>${s.cookie_count} cookie salvati</span>
+      </div>`;
+    if (s.status === 'warning' || s.status === 'expired') {
+      metaHtml += `<div class="sess-hint">Le sessioni SPID durano circa 1 ora. Potrebbe essere necessario rinnovare.</div>`;
+    }
+  } else {
+    metaHtml = '<div class="sess-meta">Nessuna sessione salvata</div>';
+  }
+
+  return `
+    <div class="session-card ${st.cls}" id="sess-card-${s.site_id}">
+      <div class="sess-card-top">
+        <span class="sess-status-dot ${st.cls}">${st.dot}</span>
+        <span class="sess-status-label">${st.label}</span>
+        <span class="badge badge-spid" style="margin-left:auto">${esc(s.auth_type.toUpperCase())}</span>
+      </div>
+      <div class="sess-name">${esc(s.site_name)}</div>
+      ${s.login_url ? `<div class="sess-url">${esc(s.login_url)}</div>` : ''}
+      ${metaHtml}
+      <div class="sess-actions">
+        <button class="btn btn-primary btn-sm" onclick="startLogin(${s.site_id}, '${esc(s.site_name)}', '${esc(s.login_url || '')}')">
+          ${loginBtnLabel}
+        </button>
+        ${s.login_url ? `<a class="btn btn-ghost btn-sm" href="${esc(s.login_url)}" target="_blank" rel="noopener" title="Apri il sito nel browser">↗ Apri sito</a>` : ''}
+      </div>
+    </div>`;
+}
+
+// ── Login flow with polling ───────────────────────────────────────────────────
+
+let loginPollInterval = null;
+let loginActiveSiteId = null;
+
+async function startLogin(siteId, siteName, loginUrl) {
+  // Prevent double-login
+  if (loginPollInterval) {
+    if (!confirm(`Login già in corso. Interrompere l'attesa per "${siteName}"?`)) return;
+    stopLoginPoll();
+  }
+
+  loginActiveSiteId = siteId;
+  showLoginBanner(siteName);
+
+  // Record current saved_at before triggering login
+  let prevSavedAt = null;
+  try {
+    const cur = await get(`/api/sessions/${siteId}`);
+    prevSavedAt = cur.saved_at;
+  } catch {}
+
+  // Trigger Playwright login (fire-and-forget on server)
+  try {
+    await post(`/api/sites/${siteId}/login`);
+  } catch (err) {
+    hideLoginBanner();
+    alert(`Errore nell'avvio del login: ${err.message}`);
+    return;
+  }
+
+  // Poll until saved_at changes (max 7 minutes)
+  let attempts = 0;
+  loginPollInterval = setInterval(async () => {
+    attempts++;
+    if (attempts > 210) { // 7 min @ 2s
+      stopLoginPoll();
+      hideLoginBanner();
+      alert('⏱ Timeout: il login non è stato completato entro 7 minuti.');
+      return;
+    }
+    try {
+      const s = await get(`/api/sessions/${siteId}`);
+      if (s.saved_at && s.saved_at !== prevSavedAt) {
+        stopLoginPoll();
+        hideLoginBanner(true);
+        // Aggiorna la card
+        const card = document.getElementById(`sess-card-${siteId}`);
+        if (card) card.outerHTML = renderSessionCard(s);
+        updateSpidAlert();
+      }
+    } catch {}
+  }, 2000);
+}
+
+function stopLoginPoll() {
+  if (loginPollInterval) { clearInterval(loginPollInterval); loginPollInterval = null; }
+  loginActiveSiteId = null;
+}
+
+function showLoginBanner(siteName) {
+  document.getElementById('login-banner-site').textContent = `Login SPID — ${siteName}`;
+  document.getElementById('login-banner').classList.remove('hidden');
+}
+
+function hideLoginBanner(success = false) {
+  const banner = document.getElementById('login-banner');
+  if (success) {
+    banner.classList.add('login-banner-success');
+    setTimeout(() => {
+      banner.classList.remove('login-banner-success');
+      banner.classList.add('hidden');
+    }, 3000);
+  } else {
+    banner.classList.add('hidden');
+  }
+}
+
+document.getElementById('login-banner-cancel').addEventListener('click', () => {
+  stopLoginPoll();
+  hideLoginBanner();
+});
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 

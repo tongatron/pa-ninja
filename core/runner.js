@@ -16,7 +16,7 @@ const dryRun = args.includes('--dry-run');
 
 // ── Core runner logic ─────────────────────────────────────────────────────────
 
-async function runSite(db, site) {
+async function runSite(db, site, existingRunId = null) {
   const modulePath = path.join(__dirname, '..', 'sites', `${site.module_path}.js`);
   let siteModule;
   try {
@@ -31,16 +31,20 @@ async function runSite(db, site) {
     try {
       session = getSession(site.name);
     } catch (err) {
-      console.warn(`[${site.name}] Warning: could not load session: ${err.message}`);
+      throw new Error(`Sessione non disponibile per "${site.name}": ${err.message}. Vai in Accessi SPID e autenticati prima di eseguire.`);
     }
   }
 
-  // Create run record
-  const runInsert = db.prepare(`
-    INSERT INTO runs (site_id, started_at, status)
-    VALUES (?, datetime('now'), 'running')
-  `);
-  const runId = dryRun ? null : runInsert.run(site.id).lastInsertRowid;
+  // Use pre-created run record if provided (from server), otherwise create one
+  let runId;
+  if (existingRunId) {
+    runId = existingRunId;
+  } else {
+    runId = dryRun ? null : db.prepare(`
+      INSERT INTO runs (site_id, started_at, status)
+      VALUES (?, datetime('now'), 'running')
+    `).run(site.id).lastInsertRowid;
+  }
 
   console.log(`[${site.name}] Starting run${dryRun ? ' (DRY RUN)' : ` #${runId}`}...`);
 

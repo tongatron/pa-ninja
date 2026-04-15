@@ -24,8 +24,12 @@
         <li><a class="nav-link" data-section="results" href="#">
           <span class="nav-icon">&#x1F4CB;</span> Risultati
         </a></li>
+        <li><a class="nav-link" data-section="messages" href="#">
+          <span class="nav-icon">&#x2709;&#xFE0F;</span> Messaggi
+        </a></li>
         <li><a class="nav-link" data-section="sessions" href="#">
-          <span class="nav-icon">&#x1F511;</span> Sessioni
+          <span class="nav-icon">&#x1F510;</span> Accessi SPID
+          <span id="nav-spid-alert" class="nav-alert hidden"></span>
         </a></li>
       </ul>
       <div class="sidebar-footer">
@@ -60,6 +64,7 @@
           </div>
         </div>
         <div id="run-all-status" class="alert hidden"></div>
+        <div id="spid-alert-panel" class="spid-alert-panel hidden"></div>
       </section>
 
       <!-- Sites section -->
@@ -75,14 +80,13 @@
                 <th>Nome</th>
                 <th>URL</th>
                 <th>Auth</th>
-                <th>Schedule</th>
                 <th>Ultima run</th>
                 <th>Status</th>
                 <th>Azioni</th>
               </tr>
             </thead>
             <tbody id="sites-tbody">
-              <tr><td colspan="7" class="loading">Caricamento...</td></tr>
+              <tr><td colspan="6" class="loading">Caricamento...</td></tr>
             </tbody>
           </table>
         </div>
@@ -102,6 +106,10 @@
           </select>
           <input id="filter-keyword" type="text" class="filter-input" placeholder="Parola chiave..." />
           <input id="filter-expires" type="date" class="filter-input" title="Scade dopo..." />
+          <label class="filter-toggle" title="Mostra solo i risultati comparsi nell'ultima run">
+            <input type="checkbox" id="filter-new-only" />
+            Solo nuovi
+          </label>
           <button id="btn-search" class="btn btn-secondary">Cerca</button>
           <button id="btn-reset-filters" class="btn btn-ghost">Reset</button>
         </div>
@@ -125,24 +133,43 @@
         <div class="pagination" id="results-pagination"></div>
       </section>
 
+      <!-- Messages section -->
+      <section id="section-messages" class="section">
+        <div class="section-header">
+          <h1>✉️ Messaggi PiemonteTu</h1>
+        </div>
+        <div class="filters-bar">
+          <select id="msg-filter-unread" class="filter-input" style="max-width:160px">
+            <option value="">Tutti</option>
+            <option value="true">Non letti</option>
+            <option value="false">Letti</option>
+          </select>
+          <input id="msg-filter-sender" type="text" class="filter-input" placeholder="Mittente..." style="max-width:200px" />
+          <input id="msg-filter-keyword" type="text" class="filter-input" placeholder="Parola chiave..." />
+          <label class="filter-toggle" title="Mostra solo i messaggi comparsi nell'ultima run">
+            <input type="checkbox" id="msg-filter-new-only" />
+            Solo nuovi
+          </label>
+          <button id="btn-msg-search" class="btn btn-secondary">Cerca</button>
+          <button id="btn-msg-reset" class="btn btn-ghost">Reset</button>
+        </div>
+        <div id="msg-count" style="font-size:12px;color:var(--color-text-muted);margin-bottom:12px"></div>
+        <div id="messages-grid" class="messages-grid">
+          <div class="loading" style="padding:32px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>
+        </div>
+      </section>
+
       <!-- Sessions section -->
       <section id="section-sessions" class="section">
         <div class="section-header">
-          <h1>Sessioni SPID</h1>
+          <h1>🔐 Accessi SPID</h1>
         </div>
-        <div class="table-container">
-          <table id="sessions-table">
-            <thead>
-              <tr>
-                <th>Sito</th>
-                <th>Salvata il</th>
-                <th>Azioni</th>
-              </tr>
-            </thead>
-            <tbody id="sessions-tbody">
-              <tr><td colspan="3" class="loading">Caricamento...</td></tr>
-            </tbody>
-          </table>
+        <p class="section-desc">
+          Gestisci le sessioni di autenticazione. Il pulsante <strong>Accedi</strong> apre una finestra Chromium:
+          completa il login lì e la sessione verrà salvata automaticamente.
+        </p>
+        <div id="sessions-grid" class="sessions-grid">
+          <div class="loading" style="padding:40px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>
         </div>
       </section>
     </main>
@@ -170,10 +197,6 @@
           <input type="text" id="site-module" placeholder="es. lavoro-piemonte" required />
         </div>
         <div class="form-group">
-          <label>Schedule (cron)</label>
-          <input type="text" id="site-schedule" placeholder="0 8,14 * * *" />
-        </div>
-        <div class="form-group">
           <label>Tipo autenticazione</label>
           <select id="site-auth">
             <option value="none">Nessuna</option>
@@ -195,6 +218,17 @@
     </div>
   </div>
 
+  <!-- Modal: Message detail -->
+  <div id="msg-modal" class="modal-overlay hidden">
+    <div class="modal modal-wide">
+      <div class="modal-header">
+        <h2 id="msg-modal-title">Messaggio</h2>
+        <button class="modal-close" id="msg-modal-close">&times;</button>
+      </div>
+      <div id="msg-modal-body"></div>
+    </div>
+  </div>
+
   <!-- Modal: Result detail -->
   <div id="result-modal" class="modal-overlay hidden">
     <div class="modal modal-wide">
@@ -203,6 +237,18 @@
         <button class="modal-close" id="result-modal-close">&times;</button>
       </div>
       <div id="result-modal-body"></div>
+    </div>
+  </div>
+
+  <!-- Login in-progress banner (fixed bottom) -->
+  <div id="login-banner" class="login-banner hidden" role="status">
+    <div class="login-banner-inner">
+      <div class="login-spinner"></div>
+      <div class="login-banner-text">
+        <strong id="login-banner-site"></strong>
+        <span>Una finestra Chromium è aperta — completa il login lì. La sessione verrà salvata automaticamente.</span>
+      </div>
+      <button class="btn btn-ghost btn-sm" id="login-banner-cancel">Annulla</button>
     </div>
   </div>
 

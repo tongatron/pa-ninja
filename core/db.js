@@ -158,13 +158,22 @@ function getRuns(siteId) {
   return db.prepare('SELECT * FROM runs ORDER BY started_at DESC LIMIT 100').all();
 }
 
+// Subquery: 1 if result appeared for the first time in the most recent completed run for its site
+const IS_NEW_EXPR = `
+  CASE WHEN r.first_seen_at >= (
+    SELECT started_at FROM runs
+    WHERE site_id = r.site_id AND status = 'ok'
+    ORDER BY started_at DESC LIMIT 1
+  ) THEN 1 ELSE 0 END
+`.trim();
+
 /**
  * Get results with optional filters.
- * filters: { siteId, province, keyword, expiresAfter, page, limit }
+ * filters: { siteId, province, keyword, expiresAfter, newOnly, page, limit }
  */
 function getResults(filters = {}) {
   const db = getDb();
-  const { siteId, province, keyword, expiresAfter, page = 1, limit = 50 } = filters;
+  const { siteId, province, keyword, expiresAfter, newOnly, page = 1, limit = 50 } = filters;
 
   const conditions = [];
   const params = [];
@@ -177,21 +186,27 @@ function getResults(filters = {}) {
     params.push(kw, kw, kw);
   }
   if (expiresAfter) { conditions.push('r.expires_at >= ?'); params.push(expiresAfter); }
+  if (newOnly) { conditions.push(`(${IS_NEW_EXPR}) = 1`); }
+
+  // Escludi sempre i siti con sezione dedicata (messaggi)
+  conditions.push("s.module_path != 'piemonte-tu-messaggi'");
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const offset = (page - 1) * limit;
 
   const rows = db.prepare(`
-    SELECT r.*, s.name AS site_name
+    SELECT r.*, s.name AS site_name, (${IS_NEW_EXPR}) AS is_new
     FROM results r
     JOIN sites s ON s.id = r.site_id
     ${where}
-    ORDER BY r.last_seen_at DESC
+    ORDER BY is_new DESC, r.last_seen_at DESC
     LIMIT ? OFFSET ?
   `).all(...params, limit, offset);
 
   const total = db.prepare(`
-    SELECT COUNT(*) AS cnt FROM results r ${where}
+    SELECT COUNT(*) AS cnt FROM results r
+    JOIN sites s ON s.id = r.site_id
+    ${where}
   `).get(...params).cnt;
 
   return { rows, total, page, limit };

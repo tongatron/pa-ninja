@@ -71,10 +71,13 @@ async function login(siteName) {
 
   await page.goto(loginUrl);
 
-  // Poll until login is detected
+  // Poll until login is detected:
+  // Strategy: wait until URL leaves the login/spid/sso flow AND
+  // the page has meaningful session cookies (not just the initial page load).
   await new Promise((resolve, reject) => {
     let checks = 0;
     const maxChecks = 360; // 6 minutes timeout
+    let initialUrl = null;
 
     const interval = setInterval(async () => {
       checks++;
@@ -85,23 +88,52 @@ async function login(siteName) {
       }
 
       try {
+        // Save initial URL on first check
+        if (checks === 1) {
+          initialUrl = page.url();
+          console.log(`Initial URL: ${initialUrl}`);
+          return; // skip first check — page just loaded
+        }
+
         const currentUrl = page.url();
+        const cookies = await context.cookies();
+
+        // Only count cookies from the target domain (not SPID/Shibboleth IdP cookies)
+        const targetHost = new URL(loginUrl).hostname;
+        const appCookies = cookies.filter(c =>
+          c.domain.includes(targetHost) &&
+          !c.name.startsWith('_shib') &&
+          !c.name.startsWith('_opensaml') &&
+          !c.name.startsWith('_shibstate')
+        );
+
+        const urlChanged = currentUrl !== initialUrl;
+        const onTargetDomain = currentUrl.includes(targetHost);
+        const notAuthPage = !currentUrl.includes('/login') &&
+                            !currentUrl.includes('/auth') &&
+                            !currentUrl.includes('/spid') &&
+                            !currentUrl.includes('/sso') &&
+                            !currentUrl.includes('agid') &&
+                            !currentUrl.includes('idp') &&
+                            !currentUrl.includes('identity');
+        // Require at least 1 real app cookie from the target domain
+        const hasAppCookies = appCookies.length >= 1;
 
         let loggedIn = false;
         if (successPattern) {
-          loggedIn = successPattern.test(currentUrl);
+          loggedIn = successPattern.test(currentUrl) && onTargetDomain && hasAppCookies;
         } else {
-          // Default: logged in when URL no longer contains login-related paths
-          loggedIn = !currentUrl.includes('/login') &&
-                     !currentUrl.includes('/auth') &&
-                     !currentUrl.includes('/spid') &&
-                     !currentUrl.includes('/sso') &&
-                     currentUrl !== loginUrl;
+          loggedIn = urlChanged && onTargetDomain && notAuthPage && hasAppCookies;
+        }
+
+        if (checks % 5 === 0) {
+          console.log(`[${checks}s] URL: ${currentUrl.slice(0, 80)} | all cookies: ${cookies.length} | app cookies: ${appCookies.length} | changed: ${urlChanged}`);
         }
 
         if (loggedIn) {
           clearInterval(interval);
-          resolve();
+          // Extra wait to ensure all cookies are set
+          setTimeout(resolve, 2000);
         }
       } catch (err) {
         // Page might be navigating, ignore transient errors
@@ -112,6 +144,11 @@ async function login(siteName) {
   console.log('Login detected! Saving session cookies...');
 
   const cookies = await context.cookies();
+  console.log(`Captured ${cookies.length} cookies from domains: ${[...new Set(cookies.map(c => c.domain))].join(', ')}`);
+  if (cookies.length === 0) {
+    await browser.close();
+    throw new Error('Nessun cookie catturato — il login potrebbe non essere andato a buon fine. Riprova.');
+  }
   await browser.close();
 
   // Save to DB

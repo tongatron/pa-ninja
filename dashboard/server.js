@@ -20,13 +20,12 @@ const db = initDb();
 const siteCount = db.prepare('SELECT COUNT(*) AS cnt FROM sites').get().cnt;
 if (siteCount === 0) {
   db.prepare(`
-    INSERT INTO sites (name, url, module_path, schedule, auth_type, enabled)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO sites (name, url, module_path, auth_type, enabled)
+    VALUES (?, ?, ?, ?, ?)
   `).run(
     'Lavoro Piemonte',
     'https://pslp.regione.piemonte.it/pslpwcl/pslpfcweb/consulta-annunci/profili-ricercati',
     'lavoro-piemonte',
-    '0 8,14 * * *',
     'none',
     1
   );
@@ -54,14 +53,14 @@ app.get('/api/sites', (req, res) => {
 // POST /api/sites
 app.post('/api/sites', (req, res) => {
   try {
-    const { name, url, modulePath, schedule, authType } = req.body;
+    const { name, url, modulePath, authType } = req.body;
     if (!name || !url || !modulePath) {
       return res.status(400).json({ error: 'name, url, modulePath are required' });
     }
     const result = db.prepare(`
-      INSERT INTO sites (name, url, module_path, schedule, auth_type, enabled)
-      VALUES (?, ?, ?, ?, ?, 1)
-    `).run(name, url, modulePath, schedule || null, authType || 'none');
+      INSERT INTO sites (name, url, module_path, auth_type, enabled)
+      VALUES (?, ?, ?, ?, 1)
+    `).run(name, url, modulePath, authType || 'none');
     const site = db.prepare('SELECT * FROM sites WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json(site);
   } catch (err) {
@@ -73,17 +72,16 @@ app.post('/api/sites', (req, res) => {
 app.put('/api/sites/:id', (req, res) => {
   try {
     const id = Number(req.params.id);
-    const { name, url, modulePath, schedule, authType, enabled } = req.body;
+    const { name, url, modulePath, authType, enabled } = req.body;
     db.prepare(`
       UPDATE sites SET
         name        = COALESCE(?, name),
         url         = COALESCE(?, url),
         module_path = COALESCE(?, module_path),
-        schedule    = COALESCE(?, schedule),
         auth_type   = COALESCE(?, auth_type),
         enabled     = COALESCE(?, enabled)
       WHERE id = ?
-    `).run(name, url, modulePath, schedule, authType, enabled != null ? Number(enabled) : null, id);
+    `).run(name, url, modulePath, authType, enabled != null ? Number(enabled) : null, id);
     const site = db.prepare('SELECT * FROM sites WHERE id = ?').get(id);
     if (!site) return res.status(404).json({ error: 'Site not found' });
     res.json(site);
@@ -135,7 +133,7 @@ app.post('/api/sites/:id/run', async (req, res) => {
     setImmediate(async () => {
       try {
         const { runSite } = require('../core/runner');
-        const result = await runSite(db, site);
+        const result = await runSite(db, site, runId);
         activeRuns.set(runId, {
           status: result.success ? 'ok' : 'error',
           siteId,
@@ -144,6 +142,9 @@ app.post('/api/sites/:id/run', async (req, res) => {
           error: result.error || null,
         });
       } catch (err) {
+        // Ensure DB run record is also marked failed (e.g. session missing before run insert)
+        db.prepare(`UPDATE runs SET status='error', error=?, finished_at=datetime('now') WHERE id=? AND status='running'`)
+          .run(err.message, runId);
         activeRuns.set(runId, { status: 'error', siteId, error: err.message });
       }
     });
@@ -176,7 +177,7 @@ app.post('/api/run-all', async (req, res) => {
         const site = sites[i];
         const runId = runIds[i];
         try {
-          const result = await runSite(db, site);
+          const result = await runSite(db, site, runId);
           activeRuns.set(runId, {
             status: result.success ? 'ok' : 'error',
             siteId: site.id,
@@ -185,6 +186,8 @@ app.post('/api/run-all', async (req, res) => {
             error: result.error || null,
           });
         } catch (err) {
+          db.prepare(`UPDATE runs SET status='error', error=?, finished_at=datetime('now') WHERE id=? AND status='running'`)
+            .run(err.message, runId);
           activeRuns.set(runId, { status: 'error', siteId: site.id, error: err.message });
         }
       }
@@ -214,12 +217,13 @@ app.get('/api/runs/:runId/status', (req, res) => {
 // GET /api/results
 app.get('/api/results', (req, res) => {
   try {
-    const { siteId, province, keyword, expiresAfter, page, limit } = req.query;
+    const { siteId, province, keyword, expiresAfter, newOnly, page, limit } = req.query;
     const result = getResults({
       siteId: siteId ? Number(siteId) : undefined,
       province: province || undefined,
       keyword: keyword || undefined,
       expiresAfter: expiresAfter || undefined,
+      newOnly: newOnly === 'true',
       page: page ? Number(page) : 1,
       limit: limit ? Math.min(Number(limit), 200) : 50,
     });
@@ -268,17 +272,131 @@ app.post('/api/sites/:id/login', (req, res) => {
   }
 });
 
+// GET /api/messages — messaggi PiemonteTu
+app.get('/api/messages', (req, res) => {
+  try {
+    const { unread, sender, keyword, newOnly } = req.query;
+
+    const site = db.prepare("SELECT id FROM sites WHERE module_path = 'piemonte-tu-messaggi'").get();
+    if (!site) return res.json([]);
+
+    const rows = db.prepare(`
+      SELECT *,
+        CASE WHEN first_seen_at >= (
+          SELECT started_at FROM runs
+          WHERE site_id = ? AND status = 'ok'
+          ORDER BY started_at DESC LIMIT 1
+        ) THEN 1 ELSE 0 END AS is_new
+      FROM results
+      WHERE site_id = ?
+      ORDER BY is_new DESC, last_seen_at DESC
+    `).all(site.id, site.id);
+
+    let messages = rows.map(r => {
+      let raw = {};
+      try { raw = JSON.parse(r.raw_json || '{}'); } catch {}
+      return { ...r, raw };
+    });
+
+    if (unread === 'true')  messages = messages.filter(m => !m.raw.read_at);
+    if (unread === 'false') messages = messages.filter(m =>  !!m.raw.read_at);
+    if (newOnly === 'true') messages = messages.filter(m => m.is_new);
+    if (sender) {
+      const s = sender.toLowerCase();
+      messages = messages.filter(m => (m.raw.sender || '').toLowerCase().includes(s));
+    }
+    if (keyword) {
+      const kw = keyword.toLowerCase();
+      messages = messages.filter(m =>
+        (m.raw.title || '').toLowerCase().includes(kw) ||
+        (m.raw.body  || '').toLowerCase().includes(kw)
+      );
+    }
+
+    res.json(messages.map(m => ({
+      id:             m.id,
+      external_id:    m.external_id,
+      title:          m.raw.title   || m.title || '(senza titolo)',
+      body:           m.raw.body    || '',
+      sender:         m.raw.sender  || '',
+      tag:            m.raw.tag     || '',
+      timestamp:      m.raw.timestamp    || '',
+      read_at:        m.raw.read_at      || null,
+      call_to_action: m.raw.call_to_action || null,
+      first_seen_at:  m.first_seen_at,
+      is_new:         m.is_new === 1,
+    })));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Helper: enrich session row ────────────────────────────────────────────────
+
+function enrichSession(r) {
+  let loginUrl = null;
+  try {
+    const modPath = path.join(__dirname, '..', 'sites', `${r.module_path}.js`);
+    const mod = require(modPath);
+    loginUrl = mod.meta?.loginUrl || null;
+  } catch {}
+
+  let status = 'none';
+  let sessionAgeHours = null;
+  let cookieCount = 0;
+
+  if (r.saved_at) {
+    const ageMs = Date.now() - new Date(r.saved_at).getTime();
+    sessionAgeHours = Math.round(ageMs / 360000) / 10;
+    if (r.cookies) { try { cookieCount = JSON.parse(r.cookies).length; } catch {} }
+    if (sessionAgeHours < 1)      status = 'ok';
+    else if (sessionAgeHours < 8) status = 'warning';
+    else                          status = 'expired';
+  }
+
+  return {
+    site_id:           r.site_id,
+    site_name:         r.site_name,
+    module_path:       r.module_path,
+    auth_type:         r.auth_type,
+    login_url:         loginUrl,
+    saved_at:          r.saved_at || null,
+    session_age_hours: sessionAgeHours,
+    cookie_count:      cookieCount,
+    status,
+  };
+}
+
 // GET /api/sessions
 app.get('/api/sessions', (req, res) => {
   try {
     const rows = db.prepare(`
-      SELECT s.id AS site_id, s.name AS site_name, se.saved_at
+      SELECT s.id AS site_id, s.name AS site_name, s.module_path,
+             s.auth_type, se.saved_at, se.cookies
       FROM sites s
       LEFT JOIN sessions se ON se.site_id = s.id
       WHERE s.auth_type != 'none'
       ORDER BY s.name
     `).all();
-    res.json(rows);
+    res.json(rows.map(enrichSession));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/sessions/:siteId — per polling dopo login
+app.get('/api/sessions/:siteId', (req, res) => {
+  try {
+    const siteId = Number(req.params.siteId);
+    const row = db.prepare(`
+      SELECT s.id AS site_id, s.name AS site_name, s.module_path,
+             s.auth_type, se.saved_at, se.cookies
+      FROM sites s
+      LEFT JOIN sessions se ON se.site_id = s.id
+      WHERE s.id = ?
+    `).get(siteId);
+    if (!row) return res.status(404).json({ error: 'Site not found' });
+    res.json(enrichSession(row));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -294,7 +412,21 @@ app.get('/api/stats', (req, res) => {
       WHERE first_seen_at >= date('now')
     `).get().cnt;
     const totalResults = db.prepare('SELECT COUNT(*) AS cnt FROM results').get().cnt;
-    res.json({ activeSites, lastRun, newToday, totalResults });
+
+    // SPID sites that have no session or session older than 8h
+    const spidSites = db.prepare(`
+      SELECT s.id, s.name, se.saved_at
+      FROM sites s
+      LEFT JOIN sessions se ON se.site_id = s.id
+      WHERE s.auth_type != 'none' AND s.enabled = 1
+    `).all();
+    const spidNeedAuth = spidSites.filter(s => {
+      if (!s.saved_at) return true;
+      const ageHours = (Date.now() - new Date(s.saved_at).getTime()) / 3600000;
+      return ageHours >= 8;
+    });
+
+    res.json({ activeSites, lastRun, newToday, totalResults, spidNeedAuth });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
