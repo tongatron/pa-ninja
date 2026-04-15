@@ -262,6 +262,11 @@ module.exports = {
     try {
       // Usa storageState se disponibile (modo corretto per Playwright),
       // altrimenti fallback su addCookies
+      console.log(`[esse3-unito] storageState disponibile: ${!!session.storageState}`);
+      if (session.storageState) {
+        const sc = (session.storageState.cookies || []);
+        console.log(`[esse3-unito] storageState cookies (${sc.length}): ${sc.map(c => `${c.name}@${c.domain}`).join(', ')}`);
+      }
       const context = session.storageState
         ? await browser.newContext({ storageState: session.storageState })
         : await browser.newContext();
@@ -275,6 +280,7 @@ module.exports = {
         try {
           await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
         } catch (e) {
+          console.log(`[esse3-unito] goto error per ${url}: ${e.message}`);
           if (/redirect|ERR_TOO_MANY/i.test(e.message)) {
             throw new Error(
               'Sessione ESSE3 scaduta — vai in "Accessi SPID", clicca Accedi su ESSE3 UniTo e ripeti il login'
@@ -283,6 +289,7 @@ module.exports = {
           throw e;
         }
         const url2 = page.url();
+        console.log(`[esse3-unito] URL finale dopo goto: ${url2}`);
         if (/Autenticazione|\/login|\/sso\/idp/i.test(url2)) {
           throw new Error(
             'Sessione ESSE3 scaduta — vai in "Accessi SPID", clicca Accedi su ESSE3 UniTo e ripeti il login'
