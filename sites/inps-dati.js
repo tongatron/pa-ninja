@@ -124,7 +124,7 @@ module.exports = {
 
       // ── Naviga alla pagina dati ───────────────────────────────────────────
       console.log('[inps-dati] Navigazione a', DATI_URL);
-      await page.goto(DATI_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await page.goto(DATI_URL, { waitUntil: 'networkidle', timeout: 45000 });
 
       const finalUrl = page.url();
       console.log('[inps-dati] URL finale:', finalUrl);
@@ -135,13 +135,11 @@ module.exports = {
         );
       }
 
-      // Attendi che Angular carichi il contenuto (cerca elementi comuni nelle SPA INPS)
-      const loaded = await waitFor(page, 'main, [class*="content"], mat-card, .container, article', 12000);
-      if (!loaded) {
-        console.warn('[inps-dati] Timeout attesa contenuto — provo ad estrarre comunque');
-      }
-      // Extra delay per Angular late rendering
-      await page.waitForTimeout(2000);
+      // Attendi rendering Angular: aspetta che sparisca lo spinner o appaia contenuto
+      await waitFor(page, 'app-root, inps-root, [class*="dati"], [class*="anagrafica"], mat-card, dl, table', 15000);
+      // Attesa extra per hydration Angular (SPA INPS spesso ha lazy-load)
+      try { await page.waitForLoadState('networkidle', { timeout: 10000 }); } catch {}
+      await page.waitForTimeout(3000);
 
       console.log('[inps-dati] Estrazione dati anagrafica...');
       anagrafica = await extractLabeledData(page);
@@ -173,15 +171,16 @@ module.exports = {
       });
       console.log(`[inps-dati] Consensi trovati: ${consensi.length}`);
 
-      // Se non abbiamo trovato nulla, salva snapshot HTML per debug
+      // Salva sempre un dump HTML per debug (sovrascrive ad ogni run)
+      const html = await page.content();
+      const debugPath = require('path').join(__dirname, '..', 'data', 'debug-inps-dati.html');
+      require('fs').writeFileSync(debugPath, html, 'utf8');
+      console.log(`[inps-dati] HTML dump salvato in: ${debugPath} (${html.length} chars)`);
+
       if (Object.keys(anagrafica).length === 0) {
-        const html = await page.content();
-        console.warn(`[inps-dati] Nessun dato estratto. HTML length: ${html.length}`);
-        console.warn('[inps-dati] Primi 2000 caratteri del body:');
-        console.warn(html.slice(0, 2000));
-        // Ritorna almeno un risultato-placeholder con l'URL corrente
-        anagrafica['_url'] = page.url();
-        anagrafica['_nota'] = 'Nessun dato estratto — verifica il selettore o il login';
+        console.warn('[inps-dati] Nessun dato estratto — apri data/debug-inps-dati.html per ispezionare la struttura della pagina');
+        anagrafica['_url']  = page.url();
+        anagrafica['_nota'] = 'Nessun dato estratto — vedi data/debug-inps-dati.html';
       }
 
     } finally {
