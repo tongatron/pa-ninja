@@ -46,6 +46,7 @@ function navigate(section, modulePath) {
   else if (section === 'messages') loadMessages();
   else if (section === 'sessions') loadSessions();
   else if (section === 'unito')    loadUnito();
+  else if (section === 'admin')    loadAdmin();
 }
 
 document.querySelectorAll('.nav-link').forEach(link => {
@@ -955,6 +956,96 @@ async function loadUnito(force = false) {
       `<tr><td colspan="6" style="color:var(--color-danger);padding:16px">${esc(err.message)}</td></tr>`;
   }
 }
+
+// ── Admin ─────────────────────────────────────────────────────────────────────
+
+async function loadAdmin() {
+  const grid = document.getElementById('admin-agents-grid');
+  grid.innerHTML = '<div class="loading" style="padding:40px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>';
+  try {
+    const agents = await get('/api/agents');
+    if (!agents.length) {
+      grid.innerHTML = '<div style="padding:24px;color:var(--color-text-muted)">Nessun agente trovato.</div>';
+      return;
+    }
+    grid.innerHTML = agents.map(agent => `
+      <div class="admin-agent-card">
+        <div class="admin-agent-header">
+          <span class="admin-agent-icon">${agent.icon}</span>
+          <div class="admin-agent-info">
+            <div class="admin-agent-name">${esc(agent.service)}</div>
+            <div class="admin-agent-meta">${agent.jobs.length} job${agent.jobs.length !== 1 ? 's' : ''}${agent.auth_type === 'spid' ? ' · SPID' : ''}</div>
+          </div>
+          <div class="admin-agent-actions">
+            <button class="btn btn-sm btn-secondary" onclick="exportAgent('${esc(agent._key)}')">⬇ Esporta</button>
+            <button class="btn btn-sm btn-danger"    onclick="deleteAgent('${esc(agent._key)}', '${esc(agent.service)}')">🗑</button>
+          </div>
+        </div>
+        <ul class="admin-job-list">
+          ${agent.jobs.map(job => `
+            <li class="admin-job-item">
+              <span class="admin-job-label">${esc(job.label)}</span>
+              <span class="admin-job-type badge badge-none">${job.view?.type || '-'}</span>
+            </li>
+          `).join('')}
+        </ul>
+      </div>
+    `).join('');
+  } catch (err) {
+    grid.innerHTML = `<div style="color:var(--color-danger);padding:24px">Errore: ${esc(err.message)}</div>`;
+  }
+}
+
+async function exportAgent(key) {
+  try {
+    const agents = await get('/api/agents');
+    const agent = agents.find(a => a._key === key);
+    if (!agent) { alert('Agente non trovato'); return; }
+    const { _key, ...clean } = agent;
+    const blob = new Blob([JSON.stringify(clean, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `${key}.json`;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+  } catch (err) {
+    alert(`Errore esportazione: ${err.message}`);
+  }
+}
+
+async function deleteAgent(key, name) {
+  if (!confirm(`Eliminare l'agente "${name}"? Il file sites/${key}.json verrà rimosso.`)) return;
+  try {
+    await del(`/api/agents/${key}`);
+    loadAdmin();
+  } catch (err) {
+    alert(`Errore: ${err.message}`);
+  }
+}
+
+document.getElementById('btn-import-agent').addEventListener('click', () => {
+  document.getElementById('input-import-agent').click();
+});
+
+document.getElementById('input-import-agent').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const statusEl = document.getElementById('admin-import-status');
+  e.target.value = '';
+  try {
+    const agent = JSON.parse(await file.text());
+    if (!agent.service || !Array.isArray(agent.jobs)) {
+      showAlert(statusEl, 'error', 'File non valido: deve avere "service" e "jobs".');
+      return;
+    }
+    await post('/api/agents/import', agent);
+    showAlert(statusEl, 'success', `Agente "${agent.service}" importato.`);
+    loadAdmin();
+    setTimeout(() => statusEl.classList.add('hidden'), 4000);
+  } catch (err) {
+    showAlert(statusEl, 'error', `Errore importazione: ${err.message}`);
+  }
+});
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 

@@ -466,6 +466,66 @@ app.get('/api/stats', (req, res) => {
   }
 });
 
+// ── Agents ────────────────────────────────────────────────────────────────────
+
+// GET /api/agents — lista agenti da sites/*.json
+app.get('/api/agents', (req, res) => {
+  try {
+    const sitesDir = path.join(__dirname, '..', 'sites');
+    const files = fs.readdirSync(sitesDir).filter(f => f.endsWith('.json'));
+    const agents = files.map(f => {
+      try {
+        const agent = JSON.parse(fs.readFileSync(path.join(sitesDir, f), 'utf8'));
+        agent._key = f.replace('.json', '');
+        return agent;
+      } catch { return null; }
+    }).filter(Boolean);
+    res.json(agents);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/agents/import — salva un nuovo agente in sites/
+app.post('/api/agents/import', (req, res) => {
+  try {
+    const agent = req.body;
+    if (!agent || !agent.service || !Array.isArray(agent.jobs)) {
+      return res.status(400).json({ error: 'Formato non valido: mancano service o jobs' });
+    }
+    const rawKey = agent._key || agent.service.toLowerCase()
+      .replace(/[àáâ]/g, 'a').replace(/[èéê]/g, 'e')
+      .replace(/[ìíî]/g, 'i').replace(/[òóô]/g, 'o').replace(/[ùúû]/g, 'u')
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const sitesDir = path.join(__dirname, '..', 'sites');
+    const filePath = path.resolve(sitesDir, `${rawKey}.json`);
+    if (!filePath.startsWith(path.resolve(sitesDir))) {
+      return res.status(400).json({ error: 'Nome non valido' });
+    }
+    const { _key, ...clean } = agent;
+    fs.writeFileSync(filePath, JSON.stringify(clean, null, 2), 'utf8');
+    res.json({ ok: true, key: rawKey });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/agents/:key — elimina un agente da sites/
+app.delete('/api/agents/:key', (req, res) => {
+  try {
+    const key = req.params.key.replace(/[^a-z0-9-]/g, '');
+    const sitesDir = path.join(__dirname, '..', 'sites');
+    const filePath = path.resolve(sitesDir, `${key}.json`);
+    if (!filePath.startsWith(path.resolve(sitesDir)) || !fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'Agente non trovato' });
+    }
+    fs.unlinkSync(filePath);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Start ─────────────────────────────────────────────────────────────────────
 const server = app.listen(PORT, () => {
   console.log(`PA-Scraping dashboard running at http://localhost:${PORT}`);
