@@ -45,6 +45,7 @@ function navigate(section, modulePath) {
   else if (section === 'results')  { loadResultsFilters(); loadResults(); }
   else if (section === 'messages') loadMessages();
   else if (section === 'sessions') loadSessions();
+  else if (section === 'info')     loadInfo(modulePath);
   else if (section === 'admin')    loadAdmin();
 }
 
@@ -842,6 +843,71 @@ document.getElementById('login-banner-cancel').addEventListener('click', () => {
   stopLoginPoll();
   hideLoginBanner();
 });
+
+// ── Info (chiave-valore) ──────────────────────────────────────────────────────
+
+let _infoModule = null;
+
+document.getElementById('btn-info-refresh').addEventListener('click', () => loadInfo(_infoModule, true));
+
+async function loadInfo(modulePath, force = false) {
+  _infoModule = modulePath;
+  const grid  = document.getElementById('info-grid');
+  const title = document.getElementById('info-section-title');
+
+  // Aggiorna titolo con il label del job
+  title.textContent = JOB_LABELS[modulePath] || modulePath || 'Informazioni';
+
+  grid.innerHTML = '<div class="loading" style="padding:40px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>';
+
+  try {
+    const sites = await get('/api/sites');
+    const site  = sites.find(s => s.module_path === modulePath);
+    if (!site) {
+      grid.innerHTML = '<div style="padding:24px;color:var(--color-text-muted)">Sito non trovato.</div>';
+      return;
+    }
+
+    // Leggi i risultati grezzi via endpoint standard
+    const data = await get(`/api/results?siteId=${site.id}&limit=200`);
+    const rows = data.results || [];
+
+    if (!rows.length) {
+      grid.innerHTML = '<div style="padding:24px;color:var(--color-text-muted)">Nessun dato — esegui il job prima.</div>';
+      return;
+    }
+
+    // Raggruppa per sezione (campo "section" nel rawJson)
+    const sections = {};
+    for (const row of rows) {
+      let raw = {};
+      try { raw = JSON.parse(row.raw_json || '{}'); } catch {}
+      const section = raw.section || 'Dati';
+      if (!sections[section]) sections[section] = [];
+
+      const key   = raw.key   || row.title   || row.external_id;
+      const value = raw.value || raw.text    || '';
+      if (key && !key.startsWith('_')) sections[section].push({ key, value });
+    }
+
+    grid.innerHTML = Object.entries(sections).map(([sec, items]) => `
+      <div class="info-kv-section">
+        <h3 class="info-kv-heading">${esc(sec.charAt(0).toUpperCase() + sec.slice(1))}</h3>
+        <div class="info-kv-cards">
+          ${items.map(({ key, value }) => `
+            <div class="info-kv-card">
+              <div class="info-kv-label">${esc(key)}</div>
+              <div class="info-kv-value">${esc(value)}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `).join('');
+
+  } catch (err) {
+    grid.innerHTML = `<div style="color:var(--color-danger);padding:24px">Errore: ${esc(err.message)}</div>`;
+  }
+}
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
 

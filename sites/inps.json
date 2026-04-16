@@ -6,10 +6,9 @@
     {
       "label": "I miei dati",
       "module_path": "inps-dati",
-      "nav_section": "results",
+      "nav_section": "info",
       "view": {
-        "type": "results-table",
-        "filters": ["keyword"],
+        "type": "info-kv",
         "notes": "Anagrafica e Consensi"
       }
     },
