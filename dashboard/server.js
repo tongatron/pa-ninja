@@ -37,7 +37,8 @@ if (siteCount === 0) {
   for (const s of inpsSites) {
     const exists = db.prepare(`SELECT id FROM sites WHERE module_path = ?`).get(s.module);
     if (!exists) {
-      db.prepare(`INSERT INTO sites (name, url, module_path, auth_type, enabled) VALUES (?, ?, ?, 'spid', 1)`)
+      // auth_type='none': usano la sessione di inps-dati tramite meta.authSite
+      db.prepare(`INSERT INTO sites (name, url, module_path, auth_type, enabled) VALUES (?, ?, ?, 'none', 1)`)
         .run(s.name, s.url, s.module);
       console.log(`Seeded site: ${s.name}`);
     }
@@ -46,6 +47,13 @@ if (siteCount === 0) {
 
 // Rimuovi ESSE3 UniTo (deprecato)
 db.prepare(`DELETE FROM sites WHERE module_path = 'esse3-unito'`).run();
+
+// I job INPS condividono la sessione di inps-dati tramite meta.authSite:
+// solo inps-dati deve avere auth_type='spid', gli altri 'none'
+db.prepare(`
+  UPDATE sites SET auth_type = 'none'
+  WHERE module_path IN ('inps-notifiche','inps-nes','inps-domande','inps-isee')
+`).run();
 
 // Fix stale 'running' runs from previous sessions
 db.prepare(`UPDATE runs SET status='failed', error='Interrotta (riavvio server)', finished_at=datetime('now') WHERE status='running'`).run();
