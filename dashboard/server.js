@@ -5,8 +5,7 @@ const fs   = require('fs');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const express = require('express');
-const { initDb, getDb, getSites, getRuns, getResults,
-        getLibretto, getLatestCarriera } = require('../core/db');
+const { initDb, getDb, getSites, getRuns, getResults } = require('../core/db');
 
 const PORT = process.env.PORT || 3001;
 const app = express();
@@ -25,22 +24,8 @@ if (siteCount === 0) {
     .run('Lavoro Piemonte',
          'https://pslp.regione.piemonte.it/pslpwcl/pslpfcweb/consulta-annunci/profili-ricercati',
          'lavoro-piemonte', 'none', 1);
-  db.prepare(`INSERT INTO sites (name, url, module_path, auth_type, enabled) VALUES (?, ?, ?, ?, ?)`)
-    .run('ESSE3 UniTo',
-         'https://esse3.unito.it/auth/studente/HomePageStudente.do',
-         'esse3-unito', 'spid', 1);
-  console.log('Seeded initial sites: Lavoro Piemonte, ESSE3 UniTo');
+  console.log('Seeded initial sites: Lavoro Piemonte');
 } else {
-  // Aggiungi ESSE3 UniTo se non esiste ancora
-  const hasEsse3 = db.prepare(`SELECT id FROM sites WHERE module_path = 'esse3-unito'`).get();
-  if (!hasEsse3) {
-    db.prepare(`INSERT INTO sites (name, url, module_path, auth_type, enabled) VALUES (?, ?, ?, ?, ?)`)
-      .run('ESSE3 UniTo',
-           'https://esse3.unito.it/auth/studente/HomePageStudente.do',
-           'esse3-unito', 'spid', 1);
-    console.log('Seeded site: ESSE3 UniTo');
-  }
-
   // Aggiungi i siti INPS se non esistono ancora
   const inpsSites = [
     { name: 'INPS – I miei dati',           url: 'https://servizi2.inps.it/servizi/areariservata/dati',                module: 'inps-dati' },
@@ -58,6 +43,9 @@ if (siteCount === 0) {
     }
   }
 }
+
+// Rimuovi ESSE3 UniTo (deprecato)
+db.prepare(`DELETE FROM sites WHERE module_path = 'esse3-unito'`).run();
 
 // Fix stale 'running' runs from previous sessions
 db.prepare(`UPDATE runs SET status='failed', error='Interrotta (riavvio server)', finished_at=datetime('now') WHERE status='running'`).run();
@@ -426,28 +414,6 @@ app.get('/api/sessions/:siteId', (req, res) => {
     `).get(siteId);
     if (!row) return res.status(404).json({ error: 'Site not found' });
     res.json(enrichSession(row));
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ── UniTo endpoints ───────────────────────────────────────────────────────────
-
-// GET /api/unito/libretto
-app.get('/api/unito/libretto', (req, res) => {
-  try {
-    const exams = getLibretto();
-    res.json({ exams });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// GET /api/unito/carriera
-app.get('/api/unito/carriera', (req, res) => {
-  try {
-    const carriera = getLatestCarriera();
-    res.json(carriera || { data: {}, scraped_at: null });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

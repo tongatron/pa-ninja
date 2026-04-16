@@ -972,56 +972,6 @@ select.filter-input { cursor: pointer; }
   white-space: pre-wrap;
 }
 
-/* ── UniTo ───────────────────────────────────────────────────────────────────── */
-.unito-tabs {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 20px;
-  border-bottom: 1px solid var(--color-border);
-}
-.unito-tab {
-  padding: 8px 20px;
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  color: var(--color-text-muted);
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: color var(--transition), border-color var(--transition);
-  margin-bottom: -1px;
-}
-.unito-tab:hover { color: var(--color-text); }
-.unito-tab.active { color: var(--color-primary-h); border-bottom-color: var(--color-primary-h); }
-.unito-panel { display: block; }
-.unito-panel.hidden { display: none; }
-.unito-summary {
-  display: flex; flex-wrap: wrap; gap: 12px;
-  margin-bottom: 16px; padding: 14px 16px;
-  background: var(--color-surface); border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-}
-.unito-summary.hidden { display: none; }
-.unito-stat { font-size: 13px; color: var(--color-text-muted); }
-.unito-stat strong { color: var(--color-primary-h); font-size: 16px; margin-right: 4px; }
-.unito-info-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px;
-}
-.unito-info-card {
-  background: var(--color-surface); border: 1px solid var(--color-border);
-  border-radius: var(--radius); padding: 14px 16px;
-}
-.unito-info-card .info-label {
-  font-size: 11px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .06em; color: var(--color-text-muted); margin-bottom: 4px;
-}
-.unito-info-card .info-value { font-size: 14px; font-weight: 600; color: var(--color-text); word-break: break-word; }
-.unito-scraped-at { font-size: 11px; color: var(--color-text-dim); margin-bottom: 16px; }
-.voto-30l  { color: #ffd23f; font-weight: 700; }
-.voto-high { color: var(--color-success); font-weight: 700; }
-.voto-mid  { color: var(--color-warning); }
-.voto-low  { color: var(--color-danger); }
-
 /* ── Scrollbar ───────────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }

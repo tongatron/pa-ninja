@@ -45,7 +45,6 @@ function navigate(section, modulePath) {
   else if (section === 'results')  { loadResultsFilters(); loadResults(); }
   else if (section === 'messages') loadMessages();
   else if (section === 'sessions') loadSessions();
-  else if (section === 'unito')    loadUnito();
   else if (section === 'admin')    loadAdmin();
 }
 
@@ -231,7 +230,6 @@ async function pollRunStatus(runIds, statusEl, onComplete) {
 const SERVICE_GROUPS = [
   { key: 'piemonte-tu',    name: 'Piemonte Tu',      icon: '✉️',  patterns: ['piemonte-tu'] },
   { key: 'lavoro-piemonte',name: 'Lavoro Piemonte',  icon: '🏢',  patterns: ['lavoro-piemonte'] },
-  { key: 'unito',          name: 'UniTo',             icon: '🎓',  patterns: ['esse3-unito', 'unito'] },
   { key: 'inps',           name: 'INPS',              icon: '🏛️', patterns: ['inps'] },
 ];
 
@@ -239,7 +237,6 @@ const JOB_LABELS = {
   'lavoro-piemonte':          'Annunci di lavoro',
   'lavoro-piemonte-documenti':'Documenti',
   'piemonte-tu-messaggi':     'Messaggi',
-  'esse3-unito':              'Libretto & Carriera',
   'inps-dati':                'I miei dati',
   'inps-notifiche':           'Centro notifiche',
   'inps-nes':                 'NES',
@@ -845,123 +842,6 @@ document.getElementById('login-banner-cancel').addEventListener('click', () => {
   stopLoginPoll();
   hideLoginBanner();
 });
-
-// ── UniTo ─────────────────────────────────────────────────────────────────────
-
-let _unitoLoaded = false;
-
-// Tab switching
-document.querySelectorAll('.unito-tab').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.unito-tab').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.unito-panel').forEach(p => p.classList.add('hidden'));
-    btn.classList.add('active');
-    document.getElementById(`unito-tab-${btn.dataset.tab}`).classList.remove('hidden');
-  });
-});
-
-function votoClass(v) {
-  if (!v) return '';
-  const s = String(v).trim();
-  if (s === '30L' || s === '30 L') return 'voto-30l';
-  const n = parseInt(s);
-  if (n === 30) return 'voto-30l';
-  if (n >= 27)  return 'voto-high';
-  if (n >= 24)  return 'voto-mid';
-  if (n >= 18)  return 'voto-low';
-  return '';
-}
-
-function renderLibretto(exams) {
-  const tbody = document.getElementById('unito-libretto-tbody');
-  const summary = document.getElementById('unito-libretto-summary');
-
-  if (!exams.length) {
-    tbody.innerHTML = '<tr><td colspan="6" class="loading">Nessun esame trovato — esegui lo scraping dalla sezione Siti.</td></tr>';
-    summary.classList.add('hidden');
-    return;
-  }
-
-  // Calcola statistiche
-  let totalCfu = 0, weightedSum = 0, gradeCount = 0;
-  exams.forEach(e => {
-    if (e.cfu) totalCfu += e.cfu;
-    const n = parseInt(e.voto);
-    if (!isNaN(n) && n >= 18 && e.cfu) {
-      weightedSum += n * e.cfu;
-      gradeCount++;
-    }
-  });
-  const superati = exams.filter(e => /superato/i.test(e.stato || '') || (e.voto && parseInt(e.voto) >= 18)).length;
-  const mediaP = totalCfu > 0 ? (weightedSum / totalCfu).toFixed(2) : null;
-  const mediaA = gradeCount > 0
-    ? (exams.filter(e => parseInt(e.voto) >= 18)
-            .reduce((s, e) => s + parseInt(e.voto), 0) / gradeCount).toFixed(2)
-    : null;
-
-  summary.innerHTML = [
-    `<span class="unito-stat"><strong>${superati}</strong> esami superati</span>`,
-    totalCfu ? `<span class="unito-stat"><strong>${totalCfu}</strong> CFU</span>` : '',
-    mediaA    ? `<span class="unito-stat"><strong>${mediaA}</strong> media aritm.</span>` : '',
-    mediaP    ? `<span class="unito-stat"><strong>${mediaP}</strong> media pesata</span>` : '',
-  ].filter(Boolean).join('');
-  summary.classList.remove('hidden');
-
-  // Tabella
-  tbody.innerHTML = exams.map(e => {
-    const vc = votoClass(e.voto);
-    const statoHtml = /superato/i.test(e.stato || '')
-      ? `<span class="badge badge-ok">${esc(e.stato)}</span>`
-      : e.stato ? esc(e.stato) : '';
-    return `<tr>
-      <td>${esc(e.codice || '')}</td>
-      <td>${esc(e.materia)}</td>
-      <td>${e.cfu || ''}</td>
-      <td class="${vc}">${esc(e.voto || '')}</td>
-      <td>${e.data_esame ? e.data_esame.slice(0, 10) : ''}</td>
-      <td>${statoHtml}</td>
-    </tr>`;
-  }).join('');
-}
-
-function renderCarriera(data) {
-  const grid = document.getElementById('unito-carriera-grid');
-  if (!data || !Object.keys(data.data || {}).length) {
-    grid.innerHTML = '<div class="loading" style="padding:32px;text-align:center;color:var(--color-text-muted)">Nessun dato — esegui lo scraping dalla sezione Siti.</div>';
-    return;
-  }
-  const ts = data.scraped_at
-    ? `<p class="unito-scraped-at">Aggiornato: ${new Date(data.scraped_at).toLocaleString('it-IT')}</p>`
-    : '';
-  const cards = Object.entries(data.data)
-    .filter(([k]) => !k.startsWith('_'))
-    .map(([k, v]) => `<div class="unito-info-card">
-      <div class="info-label">${esc(k)}</div>
-      <div class="info-value">${esc(v)}</div>
-    </div>`).join('');
-  grid.innerHTML = ts + `<div class="unito-info-grid">${cards}</div>`;
-}
-
-async function loadUnito(force = false) {
-  if (_unitoLoaded && !force) return;
-  try {
-    document.getElementById('unito-libretto-tbody').innerHTML =
-      '<tr><td colspan="6" class="loading">Caricamento...</td></tr>';
-    document.getElementById('unito-carriera-grid').innerHTML =
-      '<div class="loading" style="padding:32px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>';
-
-    const [libData, carData] = await Promise.all([
-      get('/api/unito/libretto'),
-      get('/api/unito/carriera'),
-    ]);
-    renderLibretto(libData.exams || []);
-    renderCarriera(carData);
-    _unitoLoaded = true;
-  } catch (err) {
-    document.getElementById('unito-libretto-tbody').innerHTML =
-      `<tr><td colspan="6" style="color:var(--color-danger);padding:16px">${esc(err.message)}</td></tr>`;
-  }
-}
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
 
