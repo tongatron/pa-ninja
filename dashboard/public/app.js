@@ -42,7 +42,7 @@ function navigate(section, modulePath) {
 
   if (section === 'dashboard') loadDashboard();
   else if (section === 'sites')    { loadSites(); }
-  else if (section === 'results')  { loadResultsFilters(); loadResults(); }
+  else if (section === 'results')  { loadResultsFilters(modulePath); loadResults(); }
   else if (section === 'messages') loadMessages(modulePath);
   else if (section === 'sessions') loadSessions();
   else if (section === 'info')     loadInfo(modulePath);
@@ -456,7 +456,7 @@ document.getElementById('site-form').addEventListener('submit', async e => {
 let resultsPage = 1;
 let resultsTotalPages = 1;
 
-async function loadResultsFilters() {
+async function loadResultsFilters(preSelectModule) {
   try {
     const [sites, provinces] = await Promise.all([
       get('/api/sites'),
@@ -464,9 +464,13 @@ async function loadResultsFilters() {
     ]);
 
     const siteSelect = document.getElementById('filter-site');
-    const currentSite = siteSelect.value;
+    // Pre-seleziona il sito se navigazione da job specifico
+    const preId = preSelectModule
+      ? (sites.find(s => s.module_path === preSelectModule)?.id || '')
+      : '';
+    const currentSite = preId || siteSelect.value;
     siteSelect.innerHTML = '<option value="">Tutti i siti</option>' +
-      sites.map(s => `<option value="${s.id}" ${String(s.id) === currentSite ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
+      sites.map(s => `<option value="${s.id}" ${String(s.id) === String(currentSite) ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
 
     const provSelect = document.getElementById('filter-province');
     const currentProv = provSelect.value;

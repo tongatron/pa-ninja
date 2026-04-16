@@ -29,8 +29,9 @@ async function runSite(db, site, existingRunId = null) {
   // Se il modulo definisce meta.authSite, usa quella sessione condivisa
   // (utile per job multipli sotto lo stesso login, es. tutti i job INPS).
   let session = null;
-  if (site.auth_type !== 'none') {
-    const authSiteName = siteModule.meta?.authSite || site.name;
+  // Carica sessione se: auth_type != none  OPPURE  il modulo definisce meta.authSite
+  const authSiteName = siteModule.meta?.authSite || (site.auth_type !== 'none' ? site.name : null);
+  if (authSiteName) {
     try {
       session = getSession(authSiteName);
     } catch (err) {
