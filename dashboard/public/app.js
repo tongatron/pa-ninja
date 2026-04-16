@@ -263,18 +263,30 @@ let sitesData = [];
 
 async function loadSites() {
   const grid = document.getElementById('services-grid');
+  const statsGrid = document.getElementById('overview-stats');
+  const pills = document.getElementById('dashboard-pills');
   grid.innerHTML = '<div class="loading" style="padding:40px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>';
+  if (statsGrid) {
+    statsGrid.innerHTML = '<div class="loading" style="padding:20px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>';
+  }
+  if (pills) {
+    pills.innerHTML = '';
+  }
   try {
     const [sites, sessions] = await Promise.all([
       get('/api/sites'),
       get('/api/sessions'),
     ]);
     sitesData = sites;
+    renderSitesOverview(sites, sessions);
     renderServiceCards(sites, sessions);
     renderSessionsGrid(sessions);
     updateSpidAlert((sessions || []).filter(s => s.status === 'expired' || s.status === 'none').length);
   } catch (err) {
     grid.innerHTML = `<div style="color:var(--color-danger);padding:24px">Errore: ${esc(err.message)}</div>`;
+    if (statsGrid) {
+      statsGrid.innerHTML = `<div style="color:var(--color-danger);padding:24px">Errore: ${esc(err.message)}</div>`;
+    }
   }
 }
 
@@ -290,6 +302,70 @@ function getSiteByModule(modulePath) {
 
 function getPrimaryServiceSite(groupSites) {
   return groupSites.find(site => site.auth_type !== 'none') || groupSites[0] || null;
+}
+
+function latestDate(items) {
+  return items
+    .map(value => ({ value, ts: parseUtc(value) }))
+    .filter(item => !isNaN(item.ts))
+    .sort((a, b) => b.ts - a.ts)[0]?.value || null;
+}
+
+function hostLabel(url) {
+  if (!url) return 'Portale disponibile';
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return url;
+  }
+}
+
+function serviceHealthCounts(groupSites) {
+  return groupSites.reduce((acc, site) => {
+    const status = site.last_run?.status || 'none';
+    if (status === 'ok') acc.ok += 1;
+    else if (status === 'error') acc.error += 1;
+    else if (status === 'running') acc.running += 1;
+    else acc.idle += 1;
+    return acc;
+  }, { ok: 0, error: 0, running: 0, idle: 0 });
+}
+
+function renderSitesOverview(sites, sessions) {
+  const statsGrid = document.getElementById('overview-stats');
+  const pills = document.getElementById('dashboard-pills');
+  if (!statsGrid || !pills) return;
+
+  const servicesCount = SERVICE_GROUPS.filter(group =>
+    sites.some(site => group.patterns.some(pattern => site.module_path.startsWith(pattern)))
+  ).length + (sites.some(site => !SERVICE_GROUPS.some(group => group.patterns.some(pattern => site.module_path.startsWith(pattern)))) ? 1 : 0);
+  const enabledJobs = sites.filter(site => site.enabled).length;
+  const errorJobs = sites.filter(site => site.last_run?.status === 'error').length;
+  const runningJobs = sites.filter(site => site.last_run?.status === 'running').length;
+  const spidAttention = sessions.filter(session => !['fresh', 'ok'].includes(session.status)).length;
+  const lastRunAt = latestDate(sites.map(site => site.last_run?.started_at));
+
+  statsGrid.innerHTML = [
+    { label: 'Servizi attivi', value: servicesCount, note: `${enabledJobs} job abilitati` },
+    { label: 'Job in errore', value: errorJobs, note: errorJobs ? 'Richiedono verifica' : 'Nessuna anomalia aperta', tone: errorJobs ? 'danger' : 'ok' },
+    { label: 'Accessi da rinnovare', value: spidAttention, note: spidAttention ? 'Sessioni SPID non valide' : 'Tutte le sessioni attive', tone: spidAttention ? 'warning' : 'ok' },
+    { label: 'Ultima attività', value: lastRunAt ? timeAgo(lastRunAt) : '-', note: runningJobs ? `${runningJobs} job in esecuzione` : 'Nessun job in corso' },
+  ].map(item => `
+    <div class="overview-card ${item.tone ? `tone-${item.tone}` : ''}">
+      <span class="overview-card-label">${item.label}</span>
+      <strong class="overview-card-value">${item.value}</strong>
+      <span class="overview-card-note">${item.note}</span>
+    </div>
+  `).join('');
+
+  const pillItems = [
+    { cls: 'pill-neutral', text: `${enabledJobs} job online` },
+    { cls: errorJobs ? 'pill-danger' : 'pill-ok', text: errorJobs ? `${errorJobs} errori aperti` : 'Nessun errore attivo' },
+    { cls: runningJobs ? 'pill-info' : 'pill-neutral', text: runningJobs ? `${runningJobs} esecuzioni in corso` : 'Nessuna run in corso' },
+    { cls: spidAttention ? 'pill-warning' : 'pill-ok', text: spidAttention ? `${spidAttention} accessi da rinnovare` : 'SPID allineato' },
+  ];
+
+  pills.innerHTML = pillItems.map(item => `<span class="dashboard-pill ${item.cls}">${item.text}</span>`).join('');
 }
 
 function renderSessionsGrid(sessions) {
@@ -340,6 +416,8 @@ function renderServiceCard(group, groupSites, session) {
   const protectedCount = spidJobs.length;
   const primarySite = getPrimaryServiceSite(groupSites);
   const serviceRunArgs = `${esc(JSON.stringify(groupSites.map(site => site.id)))}, ${esc(JSON.stringify(group.name))}`;
+  const health = serviceHealthCounts(groupSites);
+  const lastOkAt = latestDate(groupSites.map(site => site.last_ok_run?.started_at));
   let accessHtml = `
     <div class="svc-access svc-access-neutral">
       <div class="svc-access-top">
@@ -380,6 +458,26 @@ function renderServiceCard(group, groupSites, session) {
       </div>`;
   }
 
+  const metricsHtml = `
+    <div class="svc-metrics">
+      <div class="svc-metric">
+        <span class="svc-metric-label">Job</span>
+        <strong class="svc-metric-value">${groupSites.length}</strong>
+      </div>
+      <div class="svc-metric">
+        <span class="svc-metric-label">OK</span>
+        <strong class="svc-metric-value">${health.ok}</strong>
+      </div>
+      <div class="svc-metric">
+        <span class="svc-metric-label">Errori</span>
+        <strong class="svc-metric-value">${health.error}</strong>
+      </div>
+      <div class="svc-metric">
+        <span class="svc-metric-label">Ultimo OK</span>
+        <strong class="svc-metric-value svc-metric-value-time">${lastOkAt ? timeAgo(lastOkAt) : '-'}</strong>
+      </div>
+    </div>`;
+
   // Righe job
   const jobsHtml = groupSites.map(site => {
     const lr  = site.last_run;
@@ -393,7 +491,10 @@ function renderServiceCard(group, groupSites, session) {
 
     return `
       <div class="job-row" data-job-auth="${site.auth_type !== 'none' ? 'true' : 'false'}">
-        <span class="job-name">${esc(label)}${disabledBadge}</span>
+        <div class="job-main">
+          <span class="job-name">${esc(label)}${disabledBadge}</span>
+          <span class="job-meta">${esc(hostLabel(site.url))}</span>
+        </div>
         <span class="job-status-wrap">${statusHtml}${timeHtml}</span>
         <div class="job-actions">
           ${site.url ? `<button class="btn btn-icon btn-ghost" title="Apri link" onclick="openLink(${esc(JSON.stringify(site.url))})">${externalLinkIcon()}</button>` : ''}
@@ -415,13 +516,16 @@ function renderServiceCard(group, groupSites, session) {
               ${groupSites.length} ${groupSites.length === 1 ? 'job' : 'job'}
               ${protectedCount > 0 ? ` · ${protectedCount} con accesso SPID` : ' · accesso non richiesto'}
             </div>
+            ${metricsHtml}
           </div>
         </div>
-        <div class="svc-console-actions">
-          <button class="btn btn-secondary btn-sm" onclick='runService(${serviceRunArgs})'>&#9654; Esegui servizio</button>
-          ${primarySite?.url ? `<button class="btn btn-ghost btn-sm" onclick="openLink(${esc(JSON.stringify(primarySite.url))})">${externalLinkIcon()} Apri portale</button>` : ''}
+        <div class="svc-side">
+          <div class="svc-console-actions">
+            <button class="btn btn-secondary btn-sm" onclick='runService(${serviceRunArgs})'>&#9654; Esegui servizio</button>
+            ${primarySite?.url ? `<button class="btn btn-ghost btn-sm" onclick="openLink(${esc(JSON.stringify(primarySite.url))})">${externalLinkIcon()} Apri portale</button>` : ''}
+          </div>
+          ${accessHtml}
         </div>
-        ${accessHtml}
       </div>
       <div class="svc-jobs">${jobsHtml}</div>
     </div>`;

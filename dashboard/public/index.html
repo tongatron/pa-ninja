@@ -135,7 +135,7 @@
       <section id="section-sites" class="section active">
         <div class="section-header">
           <h1>Dashboard</h1>
-          <div style="display:flex;gap:8px">
+          <div class="section-header-actions">
             <button id="btn-run-all" class="btn btn-primary">&#9654; Esegui tutti ora</button>
             <button id="btn-add-site" class="btn btn-secondary">+ Aggiungi</button>
           </div>
@@ -144,6 +144,19 @@
           Stato servizi, ultima esecuzione e accessi SPID in un'unica vista operativa.
         </p>
         <div id="run-all-status" class="alert hidden"></div>
+        <div class="dashboard-overview">
+          <div class="dashboard-hero">
+            <div class="dashboard-hero-copy">
+              <div class="dashboard-eyebrow">Console operativa</div>
+              <h2>Una vista compatta su servizi, job e accessi SPID.</h2>
+              <p>Monitora le anomalie, apri i portali e lancia i job senza cambiare schermata.</p>
+            </div>
+            <div id="dashboard-pills" class="dashboard-pills"></div>
+          </div>
+          <div id="overview-stats" class="overview-stats">
+            <div class="loading" style="padding:20px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>
+          </div>
+        </div>
         <div id="services-grid" class="services-grid">
           <div class="loading" style="padding:40px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>
         </div>
