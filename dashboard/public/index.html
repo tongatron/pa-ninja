@@ -14,21 +14,53 @@
         <span class="brand-icon">🥷</span>
         <span class="brand-name">PA <span class="brand-ninja">NINJA</span></span>
       </div>
-      <ul class="nav-list" id="main-nav">
+      <ul class="nav-list">
+
         <li><a class="nav-link active" data-section="sites" href="#">
-          <span class="nav-icon">📊</span> Dashboard
+          <span class="nav-icon">&#x1F4CA;</span> Dashboard
         </a></li>
 
         <li class="nav-divider"></li>
 
-        <!-- Servizi generati dinamicamente da buildNav() -->
-        <div id="nav-services"></div>
+        <!-- Lavoro Piemonte -->
+        <li class="nav-service-item">
+          <span class="nav-service-label">
+            <span class="nav-icon">🏢</span>Lavoro Piemonte
+          </span>
+          <ul class="nav-job-list">
+            <li><a class="nav-job" data-section="results" data-module="lavoro-piemonte" href="#">
+              <span class="nav-job-dot">›</span> Annunci di lavoro
+            </a></li>
+            <li><a class="nav-job" data-section="results" data-module="lavoro-piemonte-documenti" href="#">
+              <span class="nav-job-dot">›</span> Documenti
+            </a></li>
+          </ul>
+        </li>
 
-        <li class="nav-divider"></li>
+        <!-- Piemonte Tu -->
+        <li class="nav-service-item">
+          <span class="nav-service-label">
+            <span class="nav-icon">✉️</span>Piemonte Tu
+          </span>
+          <ul class="nav-job-list">
+            <li><a class="nav-job" data-section="messages" data-module="piemonte-tu-messaggi" href="#">
+              <span class="nav-job-dot">›</span> Messaggi
+            </a></li>
+          </ul>
+        </li>
 
-        <li><a class="nav-link" data-section="admin" href="#">
-          <span class="nav-icon">⚙️</span> Amministrazione
-        </a></li>
+        <!-- UniTo -->
+        <li class="nav-service-item">
+          <span class="nav-service-label">
+            <span class="nav-icon">🎓</span>UniTo
+          </span>
+          <ul class="nav-job-list">
+            <li><a class="nav-job" data-section="unito" data-module="esse3-unito" href="#">
+              <span class="nav-job-dot">›</span> Libretto &amp; Carriera
+            </a></li>
+          </ul>
+        </li>
+
       </ul>
       <div class="sidebar-footer">
         <span class="version">v0.1.0</span>
@@ -212,21 +244,6 @@
           completa il login lì e la sessione verrà salvata automaticamente.
         </p>
         <div id="sessions-grid" class="sessions-grid">
-          <div class="loading" style="padding:40px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>
-        </div>
-      </section>
-
-      <!-- Admin section -->
-      <section id="section-admin" class="section">
-        <div class="section-header">
-          <h1>⚙️ Amministrazione</h1>
-          <div style="display:flex;gap:8px;align-items:center">
-            <button id="btn-import-agent" class="btn btn-secondary">⬆ Importa agente</button>
-            <input type="file" id="input-import-agent" accept=".json" style="display:none" />
-          </div>
-        </div>
-        <div id="admin-import-status" class="alert hidden" style="margin-bottom:16px"></div>
-        <div id="admin-agents-grid" class="admin-agents-grid">
           <div class="loading" style="padding:40px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>
         </div>
       </section>

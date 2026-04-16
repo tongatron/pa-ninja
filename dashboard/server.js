@@ -1,7 +1,6 @@
 'use strict';
 
 const path = require('path');
-const fs = require('fs');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const express = require('express');
@@ -462,73 +461,6 @@ app.get('/api/stats', (req, res) => {
     });
 
     res.json({ activeSites, lastRun, newToday, totalResults, spidNeedAuth });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// GET /api/agents — lista agenti da sites/*.json
-app.get('/api/agents', (req, res) => {
-  try {
-    const sitesDir = path.join(__dirname, '..', 'sites');
-    const files = fs.readdirSync(sitesDir).filter(f => f.endsWith('.json'));
-    const agents = files.map(f => {
-      try {
-        const agent = JSON.parse(fs.readFileSync(path.join(sitesDir, f), 'utf8'));
-        agent._key = f.replace('.json', '');
-        return agent;
-      } catch { return null; }
-    }).filter(Boolean);
-    res.json(agents);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// POST /api/agents/import — salva un nuovo agente (o sovrascrive) in sites/
-app.post('/api/agents/import', (req, res) => {
-  try {
-    const agent = req.body;
-    if (!agent || !agent.service || !Array.isArray(agent.jobs)) {
-      return res.status(400).json({ error: 'Formato agente non valido: mancano service o jobs' });
-    }
-    // Derive a safe filename from the service name (or use existing _key)
-    const rawKey = agent._key || agent.service.toLowerCase()
-      .replace(/[àáâ]/g, 'a').replace(/[èéê]/g, 'e')
-      .replace(/[ìíî]/g, 'i').replace(/[òóô]/g, 'o')
-      .replace(/[ùúû]/g, 'u')
-      .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-    const key = rawKey;
-    const sitesDir = path.join(__dirname, '..', 'sites');
-    // Safety: prevent directory traversal
-    const filePath = path.resolve(sitesDir, `${key}.json`);
-    if (!filePath.startsWith(path.resolve(sitesDir))) {
-      return res.status(400).json({ error: 'Nome non valido' });
-    }
-    // Strip internal _key before writing
-    const { _key, ...agentClean } = agent;
-    fs.writeFileSync(filePath, JSON.stringify(agentClean, null, 2), 'utf8');
-    res.json({ ok: true, key });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// DELETE /api/agents/:key — elimina un agente da sites/
-app.delete('/api/agents/:key', (req, res) => {
-  try {
-    const key = req.params.key.replace(/[^a-z0-9-]/g, '');
-    if (!key) return res.status(400).json({ error: 'Key non valida' });
-    const sitesDir = path.join(__dirname, '..', 'sites');
-    const filePath = path.resolve(sitesDir, `${key}.json`);
-    if (!filePath.startsWith(path.resolve(sitesDir))) {
-      return res.status(400).json({ error: 'Key non valida' });
-    }
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ error: 'Agente non trovato' });
-    }
-    fs.unlinkSync(filePath);
-    res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

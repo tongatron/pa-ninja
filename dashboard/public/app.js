@@ -23,7 +23,7 @@ const del = (path) => api('DELETE', path);
 
 let currentSection = 'sites';
 
-function navigate(section, modulePath, tab) {
+function navigate(section, modulePath) {
   document.querySelectorAll('.section').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.nav-link, .nav-job').forEach(el => el.classList.remove('active'));
 
@@ -45,18 +45,21 @@ function navigate(section, modulePath, tab) {
   else if (section === 'results')  { loadResultsFilters(); loadResults(); }
   else if (section === 'messages') loadMessages();
   else if (section === 'sessions') loadSessions();
-  else if (section === 'unito')    { loadUnito(); if (tab) switchUnitoTab(tab); }
-  else if (section === 'admin')    loadAdmin();
+  else if (section === 'unito')    loadUnito();
 }
 
-document.getElementById('main-nav').addEventListener('click', e => {
-  const link = e.target.closest('.nav-link, .nav-job');
-  if (!link) return;
-  e.preventDefault();
-  const section = link.dataset.section;
-  const module_ = link.dataset.module;
-  const tab = link.dataset.tab;
-  if (section) navigate(section, module_, tab);
+document.querySelectorAll('.nav-link').forEach(link => {
+  link.addEventListener('click', e => {
+    e.preventDefault();
+    navigate(link.dataset.section);
+  });
+});
+
+document.querySelectorAll('.nav-job').forEach(job => {
+  job.addEventListener('click', e => {
+    e.preventDefault();
+    navigate(job.dataset.section, job.dataset.module);
+  });
 });
 
 // ── Utility ───────────────────────────────────────────────────────────────────
@@ -850,16 +853,6 @@ document.querySelectorAll('.unito-tab').forEach(btn => {
   });
 });
 
-function switchUnitoTab(tab) {
-  const btn = document.querySelector(`.unito-tab[data-tab="${tab}"]`);
-  if (!btn) return;
-  document.querySelectorAll('.unito-tab').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll('.unito-panel').forEach(p => p.classList.add('hidden'));
-  btn.classList.add('active');
-  const panel = document.getElementById(`unito-tab-${tab}`);
-  if (panel) panel.classList.remove('hidden');
-}
-
 function votoClass(v) {
   if (!v) return '';
   const s = String(v).trim();
@@ -963,131 +956,6 @@ async function loadUnito(force = false) {
   }
 }
 
-// ── Nav dinamico ──────────────────────────────────────────────────────────────
-
-async function buildNav() {
-  try {
-    const agents = await get('/api/agents');
-    const container = document.getElementById('nav-services');
-    if (!container) return;
-    container.innerHTML = agents.map(agent => `
-      <li class="nav-service-item">
-        <span class="nav-service-label">
-          <span class="nav-icon">${agent.icon}</span>${esc(agent.service)}
-        </span>
-        <ul class="nav-job-list">
-          ${agent.jobs.map(job => `
-            <li><a class="nav-job"
-              data-section="${job.nav_section}"
-              data-module="${job.module_path}"
-              ${job.nav_tab ? `data-tab="${job.nav_tab}"` : ''}
-              href="#">
-              <span class="nav-job-dot">›</span> ${esc(job.label)}
-            </a></li>
-          `).join('')}
-        </ul>
-      </li>
-    `).join('');
-  } catch {}
-}
-
-// ── Admin ─────────────────────────────────────────────────────────────────────
-
-async function loadAdmin() {
-  const grid = document.getElementById('admin-agents-grid');
-  grid.innerHTML = '<div class="loading" style="padding:40px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>';
-  try {
-    const agents = await get('/api/agents');
-    if (!agents.length) {
-      grid.innerHTML = '<div style="padding:24px;color:var(--color-text-muted)">Nessun agente trovato.</div>';
-      return;
-    }
-    grid.innerHTML = agents.map(agent => `
-      <div class="admin-agent-card">
-        <div class="admin-agent-header">
-          <span class="admin-agent-icon">${agent.icon}</span>
-          <div class="admin-agent-info">
-            <div class="admin-agent-name">${esc(agent.service)}</div>
-            <div class="admin-agent-meta">${agent.jobs.length} job${agent.jobs.length !== 1 ? 's' : ''}${agent.auth_type === 'spid' ? ' · SPID' : ''}</div>
-          </div>
-          <div class="admin-agent-actions">
-            <button class="btn btn-sm btn-secondary" onclick="exportAgent('${esc(agent._key)}')">⬇ Esporta</button>
-            <button class="btn btn-sm btn-danger"    onclick="deleteAgent('${esc(agent._key)}', '${esc(agent.service)}')">🗑</button>
-          </div>
-        </div>
-        <ul class="admin-job-list">
-          ${agent.jobs.map(job => `
-            <li class="admin-job-item">
-              <span class="admin-job-label">${esc(job.label)}</span>
-              <span class="admin-job-type badge badge-none">${job.view?.type || '-'}</span>
-            </li>
-          `).join('')}
-        </ul>
-      </div>
-    `).join('');
-  } catch (err) {
-    grid.innerHTML = `<div style="color:var(--color-danger);padding:24px">Errore: ${esc(err.message)}</div>`;
-  }
-}
-
-// Export: fetch agent JSON from server, trigger browser download
-async function exportAgent(key) {
-  try {
-    const agents = await get('/api/agents');
-    const agent = agents.find(a => a._key === key);
-    if (!agent) { alert('Agente non trovato'); return; }
-    // Strip internal _key before exporting
-    const { _key, ...clean } = agent;
-    const blob = new Blob([JSON.stringify(clean, null, 2)], { type: 'application/json' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href = url; a.download = `${key}.json`;
-    document.body.appendChild(a); a.click();
-    document.body.removeChild(a); URL.revokeObjectURL(url);
-  } catch (err) {
-    alert(`Errore durante l'esportazione: ${err.message}`);
-  }
-}
-
-// Delete agent
-async function deleteAgent(key, name) {
-  if (!confirm(`Eliminare l'agente "${name}"? Il file sites/${key}.json verrà rimosso.`)) return;
-  try {
-    await del(`/api/agents/${key}`);
-    await Promise.all([loadAdmin(), buildNav()]);
-  } catch (err) {
-    alert(`Errore: ${err.message}`);
-  }
-}
-
-// Import agent — triggered by file input
-document.getElementById('btn-import-agent').addEventListener('click', () => {
-  document.getElementById('input-import-agent').click();
-});
-
-document.getElementById('input-import-agent').addEventListener('change', async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  const statusEl = document.getElementById('admin-import-status');
-  e.target.value = ''; // reset so same file can be picked again
-
-  try {
-    const text = await file.text();
-    const agent = JSON.parse(text);
-    if (!agent.service || !Array.isArray(agent.jobs)) {
-      showAlert(statusEl, 'error', 'File non valido: deve avere i campi "service" e "jobs".');
-      return;
-    }
-    await post('/api/agents/import', agent);
-    showAlert(statusEl, 'success', `Agente "${agent.service}" importato con successo.`);
-    await Promise.all([loadAdmin(), buildNav()]);
-    setTimeout(() => statusEl.classList.add('hidden'), 4000);
-  } catch (err) {
-    showAlert(statusEl, 'error', `Errore durante l'importazione: ${err.message}`);
-  }
-});
-
 // ── Init ──────────────────────────────────────────────────────────────────────
 
-buildNav();
 navigate('sites');
