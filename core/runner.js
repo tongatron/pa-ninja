@@ -25,13 +25,16 @@ async function runSite(db, site, existingRunId = null) {
     throw new Error(`Cannot load module for site "${site.name}": ${err.message}`);
   }
 
-  // Load session if site requires auth
+  // Load session if site requires auth.
+  // Se il modulo definisce meta.authSite, usa quella sessione condivisa
+  // (utile per job multipli sotto lo stesso login, es. tutti i job INPS).
   let session = null;
   if (site.auth_type !== 'none') {
+    const authSiteName = siteModule.meta?.authSite || site.name;
     try {
-      session = getSession(site.name);
+      session = getSession(authSiteName);
     } catch (err) {
-      throw new Error(`Sessione non disponibile per "${site.name}": ${err.message}. Vai in Accessi SPID e autenticati prima di eseguire.`);
+      throw new Error(`Sessione non disponibile per "${authSiteName}": ${err.message}. Vai in Accessi SPID e autenticati prima di eseguire.`);
     }
   }
 
