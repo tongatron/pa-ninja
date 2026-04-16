@@ -43,7 +43,7 @@ function navigate(section, modulePath) {
   if (section === 'dashboard') loadDashboard();
   else if (section === 'sites')    { loadSites(); }
   else if (section === 'results')  { loadResultsFilters(); loadResults(); }
-  else if (section === 'messages') loadMessages();
+  else if (section === 'messages') loadMessages(modulePath);
   else if (section === 'sessions') loadSessions();
   else if (section === 'info')     loadInfo(modulePath);
   else if (section === 'admin')    loadAdmin();
@@ -239,7 +239,7 @@ const JOB_LABELS = {
   'lavoro-piemonte-documenti':'Documenti',
   'piemonte-tu-messaggi':     'Messaggi',
   'inps-dati':                'I miei dati',
-  'inps-notifiche':           'Centro notifiche',
+  'inps-notifiche':           'Centro notifiche INPS',
   'inps-nes':                 'NES',
   'inps-domande':             'Consultazione domande',
   'inps-isee':                'ISEE dichiarazioni',
@@ -595,9 +595,16 @@ resultModal.addEventListener('click', e => {
 
 // ── Messages ──────────────────────────────────────────────────────────────────
 
-async function loadMessages() {
+let _currentMsgModule = null;
+
+async function loadMessages(modulePath) {
+  if (modulePath) _currentMsgModule = modulePath;
   const grid = document.getElementById('messages-grid');
   const countEl = document.getElementById('msg-count');
+  const titleEl = document.getElementById('messages-section-title');
+  if (titleEl && _currentMsgModule) {
+    titleEl.textContent = '✉️ ' + (JOB_LABELS[_currentMsgModule] || _currentMsgModule);
+  }
   grid.innerHTML = '<div class="loading" style="padding:32px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>';
   countEl.textContent = '';
 
@@ -610,6 +617,7 @@ async function loadMessages() {
   if (sender)  params.set('sender', sender);
   if (keyword) params.set('keyword', keyword);
   if (newOnly) params.set('newOnly', 'true');
+  if (_currentMsgModule) params.set('module', _currentMsgModule);
 
   try {
     const messages = await get(`/api/messages?${params}`);

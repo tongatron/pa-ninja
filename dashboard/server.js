@@ -295,12 +295,15 @@ app.post('/api/sites/:id/login', (req, res) => {
   }
 });
 
-// GET /api/messages — messaggi PiemonteTu
+// GET /api/messages — messaggi (filtra per siteId o module, default piemonte-tu-messaggi)
 app.get('/api/messages', (req, res) => {
   try {
-    const { unread, sender, keyword, newOnly } = req.query;
+    const { unread, sender, keyword, newOnly, siteId, module: mod } = req.query;
 
-    const site = db.prepare("SELECT id FROM sites WHERE module_path = 'piemonte-tu-messaggi'").get();
+    let site;
+    if (siteId)    site = db.prepare('SELECT id FROM sites WHERE id = ?').get(Number(siteId));
+    else if (mod)  site = db.prepare('SELECT id FROM sites WHERE module_path = ?').get(mod);
+    else           site = db.prepare("SELECT id FROM sites WHERE module_path = 'piemonte-tu-messaggi'").get();
     if (!site) return res.json([]);
 
     const rows = db.prepare(`
