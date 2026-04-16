@@ -1,0 +1,56 @@
+{
+  "service": "INPS",
+  "icon": "🏛️",
+  "auth_type": "spid",
+  "jobs": [
+    {
+      "label": "I miei dati",
+      "module_path": "inps-dati",
+      "nav_section": "results",
+      "view": {
+        "type": "results-table",
+        "filters": ["keyword"],
+        "notes": "Anagrafica e Consensi"
+      }
+    },
+    {
+      "label": "Centro notifiche",
+      "module_path": "inps-notifiche",
+      "nav_section": "messages",
+      "view": {
+        "type": "messages-list",
+        "notes": "Notifiche, Scadenza e Appuntamenti"
+      }
+    },
+    {
+      "label": "NES",
+      "module_path": "inps-nes",
+      "nav_section": "results",
+      "view": {
+        "type": "results-table",
+        "filters": ["keyword"],
+        "notes": "Data, titolo e sottotipolo"
+      }
+    },
+    {
+      "label": "Consultazione domande",
+      "module_path": "inps-domande",
+      "nav_section": "results",
+      "view": {
+        "type": "results-table",
+        "filters": ["keyword"],
+        "notes": "Riga tabella con dettaglio domanda e download PDF"
+      }
+    },
+    {
+      "label": "ISEE dichiarazioni",
+      "module_path": "inps-isee",
+      "nav_section": "results",
+      "view": {
+        "type": "results-table",
+        "filters": ["keyword"],
+        "notes": "Esporta tabella e download file"
+      }
+    }
+  ]
+}

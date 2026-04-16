@@ -40,6 +40,23 @@ if (siteCount === 0) {
            'esse3-unito', 'spid', 1);
     console.log('Seeded site: ESSE3 UniTo');
   }
+
+  // Aggiungi i siti INPS se non esistono ancora
+  const inpsSites = [
+    { name: 'INPS – I miei dati',           url: 'https://servizi2.inps.it/servizi/areariservata/dati',                module: 'inps-dati' },
+    { name: 'INPS – Centro notifiche',       url: 'https://servizi2.inps.it/servizi/areariservata/centro-notifiche',   module: 'inps-notifiche' },
+    { name: 'INPS – NES',                    url: 'https://www.inps.it/it/it.html',                                    module: 'inps-nes' },
+    { name: 'INPS – Consultazione domande',  url: 'https://servizi2.inps.it/servizi/GedoDS/home/Riepilogo',            module: 'inps-domande' },
+    { name: 'INPS – ISEE dichiarazioni',     url: 'https://servizi2.inps.it/servizi/PortaleUnicoIsee',                 module: 'inps-isee' },
+  ];
+  for (const s of inpsSites) {
+    const exists = db.prepare(`SELECT id FROM sites WHERE module_path = ?`).get(s.module);
+    if (!exists) {
+      db.prepare(`INSERT INTO sites (name, url, module_path, auth_type, enabled) VALUES (?, ?, ?, 'spid', 1)`)
+        .run(s.name, s.url, s.module);
+      console.log(`Seeded site: ${s.name}`);
+    }
+  }
 }
 
 // Fix stale 'running' runs from previous sessions

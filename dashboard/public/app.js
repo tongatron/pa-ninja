@@ -232,6 +232,7 @@ const SERVICE_GROUPS = [
   { key: 'piemonte-tu',    name: 'Piemonte Tu',      icon: '✉️',  patterns: ['piemonte-tu'] },
   { key: 'lavoro-piemonte',name: 'Lavoro Piemonte',  icon: '🏢',  patterns: ['lavoro-piemonte'] },
   { key: 'unito',          name: 'UniTo',             icon: '🎓',  patterns: ['esse3-unito', 'unito'] },
+  { key: 'inps',           name: 'INPS',              icon: '🏛️', patterns: ['inps'] },
 ];
 
 const JOB_LABELS = {
@@ -239,6 +240,11 @@ const JOB_LABELS = {
   'lavoro-piemonte-documenti':'Documenti',
   'piemonte-tu-messaggi':     'Messaggi',
   'esse3-unito':              'Libretto & Carriera',
+  'inps-dati':                'I miei dati',
+  'inps-notifiche':           'Centro notifiche',
+  'inps-nes':                 'NES',
+  'inps-domande':             'Consultazione domande',
+  'inps-isee':                'ISEE dichiarazioni',
 };
 
 let sitesData = [];
