@@ -5,7 +5,7 @@ const fs   = require('fs');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const express = require('express');
-const { initDb, getDb, getSites, getRuns, getResults } = require('../core/db');
+const { initDb, getSites, getRuns, getResults } = require('../core/db');
 
 const PORT = process.env.PORT || 3001;
 const app = express();
@@ -17,31 +17,57 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const db = initDb();
 
-// Seed siti iniziali se la tabella è vuota
-const siteCount = db.prepare('SELECT COUNT(*) AS cnt FROM sites').get().cnt;
-if (siteCount === 0) {
-  db.prepare(`INSERT INTO sites (name, url, module_path, auth_type, enabled) VALUES (?, ?, ?, ?, ?)`)
-    .run('Lavoro Piemonte',
-         'https://pslp.regione.piemonte.it/pslpwcl/pslpfcweb/consulta-annunci/profili-ricercati',
-         'lavoro-piemonte', 'none', 1);
-  console.log('Seeded initial sites: Lavoro Piemonte');
-} else {
-  // Aggiungi i siti INPS se non esistono ancora
-  const inpsSites = [
-    { name: 'INPS – I miei dati',           url: 'https://servizi2.inps.it/servizi/areariservata/dati',                module: 'inps-dati' },
-    { name: 'INPS – Centro notifiche',       url: 'https://servizi2.inps.it/servizi/areariservata/centro-notifiche',   module: 'inps-notifiche' },
-    { name: 'INPS – NES',                    url: 'https://www.inps.it/it/it.html',                                    module: 'inps-nes' },
-    { name: 'INPS – Consultazione domande',  url: 'https://servizi2.inps.it/servizi/GedoDS/home/Riepilogo',            module: 'inps-domande' },
-    { name: 'INPS – ISEE dichiarazioni',     url: 'https://servizi2.inps.it/servizi/PortaleUnicoIsee',                 module: 'inps-isee' },
-  ];
-  for (const s of inpsSites) {
-    const exists = db.prepare(`SELECT id FROM sites WHERE module_path = ?`).get(s.module);
-    if (!exists) {
-      // auth_type='none': usano la sessione di inps-dati tramite meta.authSite
-      db.prepare(`INSERT INTO sites (name, url, module_path, auth_type, enabled) VALUES (?, ?, ?, 'none', 1)`)
-        .run(s.name, s.url, s.module);
-      console.log(`Seeded site: ${s.name}`);
-    }
+const seededSites = [
+  {
+    name: 'Lavoro Piemonte',
+    url: 'https://pslp.regione.piemonte.it/pslpwcl/pslpfcweb/consulta-annunci/profili-ricercati',
+    module: 'lavoro-piemonte',
+    auth: 'none',
+  },
+  {
+    name: 'INPS – I miei dati',
+    url: 'https://servizi2.inps.it/servizi/areariservata/dati',
+    module: 'inps-dati',
+    auth: 'spid',
+  },
+  {
+    name: 'INPS – Centro notifiche',
+    url: 'https://servizi2.inps.it/servizi/areariservata/centro-notifiche',
+    module: 'inps-notifiche',
+    auth: 'none',
+  },
+  {
+    name: 'INPS – NES',
+    url: 'https://www.inps.it/it/it.html',
+    module: 'inps-nes',
+    auth: 'none',
+  },
+  {
+    name: 'INPS – Consultazione domande',
+    url: 'https://servizi2.inps.it/servizi/GedoDS/home/Riepilogo',
+    module: 'inps-domande',
+    auth: 'none',
+  },
+  {
+    name: 'INPS – ISEE dichiarazioni',
+    url: 'https://servizi2.inps.it/servizi/PortaleUnicoIsee',
+    module: 'inps-isee',
+    auth: 'none',
+  },
+  {
+    name: 'AdE Riscossione – Saldati',
+    url: 'https://servizi.agenziaentrateriscossione.gov.it/estratto-conto/situazione-debitoria#tab-saldati',
+    module: 'ader-saldati',
+    auth: 'spid',
+  },
+];
+
+for (const site of seededSites) {
+  const exists = db.prepare(`SELECT id FROM sites WHERE module_path = ?`).get(site.module);
+  if (!exists) {
+    db.prepare(`INSERT INTO sites (name, url, module_path, auth_type, enabled) VALUES (?, ?, ?, ?, 1)`)
+      .run(site.name, site.url, site.module, site.auth);
+    console.log(`Seeded site: ${site.name}`);
   }
 }
 
@@ -425,6 +451,48 @@ app.get('/api/sessions/:siteId', (req, res) => {
     `).get(siteId);
     if (!row) return res.status(404).json({ error: 'Site not found' });
     res.json(enrichSession(row));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Spese Mediche endpoints ───────────────────────────────────────────────────
+
+app.get('/api/spese', (req, res) => {
+  try {
+    const site = db.prepare("SELECT id FROM sites WHERE module_path = 'spese-mediche'").get();
+    if (!site) return res.json([]);
+    const rows = db.prepare(
+      "SELECT * FROM results WHERE site_id = ? ORDER BY external_id DESC"
+    ).all(site.id);
+    res.json(rows.map(r => {
+      let raw = {};
+      try { raw = JSON.parse(r.raw_json || '{}'); } catch {}
+      return {
+        id:          r.id,
+        externalId:  r.external_id,
+        year:        raw.year || r.external_id?.replace('spese-',''),
+        total:       raw.total || r.contract_type || '',
+        xlsFilename: raw.xlsFilename || null,
+        rows:        raw.rows || [],
+        scrapedAt:   raw.scrapedAt || r.last_seen_at,
+        isNew:       false,
+      };
+    }));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/spese/file/:filename', (req, res) => {
+  try {
+    const filename = path.basename(req.params.filename); // sanitize
+    if (!filename.startsWith('spese_') || !filename.endsWith('.xls')) {
+      return res.status(400).json({ error: 'Invalid filename' });
+    }
+    const filePath = path.join(__dirname, '..', 'data', 'spese-mediche', filename);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
+    res.download(filePath, filename);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

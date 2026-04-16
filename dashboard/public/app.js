@@ -47,6 +47,7 @@ function navigate(section, modulePath) {
   else if (section === 'sessions') loadSessions();
   else if (section === 'info')     loadInfo(modulePath);
   else if (section === 'admin')    loadAdmin();
+  else if (section === 'spese') loadSpese();
 }
 
 document.querySelectorAll('.nav-link').forEach(link => {
@@ -229,9 +230,10 @@ async function pollRunStatus(runIds, statusEl, onComplete) {
 
 // Raggruppamento servizi: ogni servizio raggruppa uno o più site (job)
 const SERVICE_GROUPS = [
-  { key: 'piemonte-tu',    name: 'Piemonte Tu',      icon: '✉️',  patterns: ['piemonte-tu'] },
-  { key: 'lavoro-piemonte',name: 'Lavoro Piemonte',  icon: '🏢',  patterns: ['lavoro-piemonte'] },
-  { key: 'inps',           name: 'INPS',              icon: '🏛️', patterns: ['inps'] },
+  { key: 'piemonte-tu',    name: 'Piemonte Tu',        icon: '✉️',  patterns: ['piemonte-tu'] },
+  { key: 'lavoro-piemonte',name: 'Lavoro Piemonte',    icon: '🏢',  patterns: ['lavoro-piemonte'] },
+  { key: 'inps',           name: 'INPS',                icon: '🏛️', patterns: ['inps'] },
+  { key: 'ader',           name: 'AdE Riscossione',     icon: '🏦',  patterns: ['ader'] },
 ];
 
 const JOB_LABELS = {
@@ -243,6 +245,7 @@ const JOB_LABELS = {
   'inps-nes':                 'NES',
   'inps-domande':             'Consultazione domande',
   'inps-isee':                'ISEE dichiarazioni',
+  'ader-saldati':             'Saldati',
 };
 
 let sitesData = [];
@@ -710,6 +713,66 @@ msgModal.addEventListener('click', e => {
   if (e.target === msgModal) msgModal.classList.add('hidden');
 });
 
+// ── Spese Mediche ─────────────────────────────────────────────────────────────
+
+async function loadSpese() {
+  const grid = document.getElementById('spese-years-grid');
+  const currentYearEl = document.getElementById('spese-current-year');
+  grid.innerHTML = '<div class="loading" style="padding:32px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>';
+  currentYearEl.innerHTML = '';
+
+  try {
+    const data = await get('/api/spese');
+
+    if (!data.length) {
+      grid.innerHTML = '<div style="padding:32px;text-align:center;color:var(--color-text-muted)">Nessun dato. Aggiungi il sito "Spese Mediche" ed eseguilo.</div>';
+      return;
+    }
+
+    const currentYear = String(new Date().getFullYear());
+
+    // Year cards
+    grid.innerHTML = data.map(s => {
+      const isCurrent = s.year === currentYear;
+      return `
+        <div class="spese-year-card ${isCurrent ? 'spese-year-current' : ''}">
+          <div class="spese-year-label">${isCurrent ? '📅 Anno in corso' : ''}</div>
+          <div class="spese-year-number">${esc(s.year)}</div>
+          <div class="spese-year-total">${esc(s.total || '—')}</div>
+          <div class="spese-year-meta">Aggiornato ${s.scrapedAt ? timeAgo(s.scrapedAt) : '—'}</div>
+          <div class="spese-year-actions">
+            ${s.xlsFilename
+              ? `<a class="btn btn-primary btn-sm" href="/api/spese/file/${encodeURIComponent(s.xlsFilename)}" download>⬇ Scarica XLS</a>`
+              : '<span style="font-size:11px;color:var(--color-text-dim)">XLS non disponibile</span>'}
+          </div>
+        </div>`;
+    }).join('');
+
+    // Current year table
+    const current = data.find(s => s.year === currentYear);
+    if (current && current.rows && current.rows.length > 0) {
+      currentYearEl.innerHTML = `
+        <h2 class="spese-table-title">Dettaglio spese ${currentYear}</h2>
+        <div class="table-container">
+          <table>
+            <thead><tr>
+              <th>Erogatore</th>
+              <th>Tipologia</th>
+              <th>Importo</th>
+              <th>Data emissione</th>
+              <th>Data pagamento</th>
+            </tr></thead>
+            <tbody>
+              ${current.rows.map(r => `<tr>${r.slice(0,5).map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    }
+  } catch (err) {
+    grid.innerHTML = `<div style="color:var(--color-danger);padding:24px">Errore: ${esc(err.message)}</div>`;
+  }
+}
+
 // ── Sessions ──────────────────────────────────────────────────────────────────
 
 const SESSION_STATUS = {
@@ -806,6 +869,7 @@ async function startLogin(siteId, siteName, loginUrl) {
 
   // Poll until saved_at changes (max 7 minutes)
   let attempts = 0;
+  let consecutiveErrors = 0;
   loginPollInterval = setInterval(async () => {
     attempts++;
     if (attempts > 210) { // 7 min @ 2s
@@ -816,15 +880,26 @@ async function startLogin(siteId, siteName, loginUrl) {
     }
     try {
       const s = await get(`/api/sessions/${siteId}`);
+      consecutiveErrors = 0;
       if (s.saved_at && s.saved_at !== prevSavedAt) {
         stopLoginPoll();
         hideLoginBanner(true);
-        // Aggiorna la card
-        const card = document.getElementById(`sess-card-${siteId}`);
-        if (card) card.outerHTML = renderSessionCard(s);
+        // Aggiorna la card nella pagina Accessi SPID
+        if (typeof loadSessions === 'function' && document.getElementById('section-sessions')?.classList.contains('active')) {
+          loadSessions();
+        } else {
+          const card = document.getElementById(`sess-card-${siteId}`);
+          if (card) card.outerHTML = renderSessionCard(s);
+        }
         updateSpidAlert();
       }
-    } catch {}
+    } catch {
+      consecutiveErrors++;
+      if (consecutiveErrors >= 5) { // 10s of consecutive errors → give up
+        stopLoginPoll();
+        hideLoginBanner();
+      }
+    }
   }, 2000);
 }
 

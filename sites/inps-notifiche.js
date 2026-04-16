@@ -16,8 +16,11 @@
 const BASE = 'https://servizi2.inps.it';
 const URL_NOTIFICHE = `${BASE}/servizi/areariservata/centro-notifiche`;
 
-function isAuthPage(url) {
-  return /login|spid|sso|idp|identity|agid/i.test(url) && !url.includes('areariservata');
+function isSessionExpired(url) {
+  if (/login|spid|sso|idp|identity|agid/i.test(url) && !url.includes('areariservata')) return true;
+  if (url.includes('www.inps.it')) return true;
+  if (!url.includes('servizi2.inps.it') && !url.includes('areariservata')) return true;
+  return false;
 }
 
 module.exports = {
@@ -71,8 +74,8 @@ module.exports = {
       const finalUrl = page.url();
       console.log('[inps-notifiche] URL finale:', finalUrl);
 
-      if (isAuthPage(finalUrl)) {
-        throw new Error('Sessione INPS scaduta — vai in Accessi SPID e rifai il login.');
+      if (isSessionExpired(finalUrl)) {
+        throw new Error(`Sessione INPS scaduta (redirect a ${finalUrl}) — vai in "Accessi SPID" e rifai il login.`);
       }
 
       await page.waitForTimeout(3000);

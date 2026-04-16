@@ -82,10 +82,15 @@ async function extractLabeledData(page) {
   });
 }
 
-/** Rileva se la pagina ha reindirizzato al login */
-function isAuthPage(url) {
-  return /login|spid|sso|idp|identity|agid|auth/i.test(url) &&
-         !url.includes('areariservata');
+/** Rileva se la sessione è scaduta: INPS redirige fuori da servizi2.inps.it */
+function isSessionExpired(url) {
+  // Caso 1: redirect a login/spid
+  if (/login|spid|sso|idp|identity|agid|auth/i.test(url) && !url.includes('areariservata')) return true;
+  // Caso 2: redirect a www.inps.it (404, homepage, errore) — sessione scaduta
+  if (url.includes('www.inps.it')) return true;
+  // Caso 3: qualsiasi URL fuori da servizi2.inps.it
+  if (!url.includes('servizi2.inps.it') && !url.includes('areariservata')) return true;
+  return false;
 }
 
 // ── Module export ───────────────────────────────────────────────────────────
@@ -129,9 +134,9 @@ module.exports = {
       const finalUrl = page.url();
       console.log('[inps-dati] URL finale:', finalUrl);
 
-      if (isAuthPage(finalUrl)) {
+      if (isSessionExpired(finalUrl)) {
         throw new Error(
-          'Sessione INPS scaduta o non disponibile — vai in "Accessi SPID", clicca Accedi su INPS e completa il login SPID.'
+          `Sessione INPS scaduta (redirect a ${finalUrl}) — vai in "Accessi SPID", clicca Accedi su INPS e completa il login SPID.`
         );
       }
 

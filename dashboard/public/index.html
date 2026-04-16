@@ -73,6 +73,22 @@
           </ul>
         </li>
 
+        <!-- AdE Riscossione -->
+        <li class="nav-service-item">
+          <span class="nav-service-label">
+            <span class="nav-icon">🏦</span>AdE Riscossione
+          </span>
+          <ul class="nav-job-list">
+            <li><a class="nav-job" data-section="results" data-module="ader-saldati" href="#">
+              <span class="nav-job-dot">›</span> Saldati
+            </a></li>
+          </ul>
+        </li>
+
+        <li><a class="nav-link" data-section="spese" href="#">
+          <span class="nav-icon">💊</span> Spese Mediche
+        </a></li>
+
         <li class="nav-divider"></li>
 
         <li><a class="nav-link" data-section="admin" href="#">
@@ -91,7 +107,7 @@
       <section id="section-dashboard" class="section">
         <div class="section-header">
           <h1>Dashboard</h1>
-          <button id="btn-run-all" class="btn btn-primary">&#9654; Esegui tutti ora</button>
+          <button id="btn-run-all-legacy" class="btn btn-primary">&#9654; Esegui tutti ora</button>
         </div>
         <div class="stats-grid">
           <div class="stat-card">
@@ -111,7 +127,7 @@
             <div class="stat-label">Ultima run</div>
           </div>
         </div>
-        <div id="run-all-status" class="alert hidden"></div>
+        <div id="run-all-status-legacy" class="alert hidden"></div>
         <div id="spid-alert-panel" class="spid-alert-panel hidden"></div>
       </section>
 
@@ -218,6 +234,18 @@
         <div id="info-grid" class="info-kv-grid">
           <div class="loading" style="padding:40px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>
         </div>
+      </section>
+
+      <!-- Spese Mediche section -->
+      <section id="section-spese" class="section">
+        <div class="section-header">
+          <h1>💊 Spese Mediche</h1>
+        </div>
+        <p class="section-desc">
+          Spese sanitarie scaricate dal Sistema Tessera Sanitaria. Esegui il sito per aggiornare i dati e scaricare i file XLS.
+        </p>
+        <div id="spese-years-grid" class="spese-years-grid"></div>
+        <div id="spese-current-year" class="spese-current-year"></div>
       </section>
 
       <!-- Sessions section -->

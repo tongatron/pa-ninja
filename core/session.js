@@ -84,6 +84,15 @@ async function login(siteName) {
     let checks = 0;
     const maxChecks = 360; // 6 minutes timeout
     let initialUrl = null;
+    const targetHost = new URL(loginUrl).hostname;
+
+    // SPID login always passes through an external IdP domain.
+    // We track this to avoid false positives: the successPattern must
+    // match ONLY AFTER the browser has left the target domain at least once
+    // (i.e. gone through SPID/SSO provider). Without this flag, a site
+    // that serves cookies on initial page load (before login) would be
+    // detected as logged-in immediately.
+    let everLeftTargetDomain = false;
 
     const interval = setInterval(async () => {
       checks++;
@@ -94,18 +103,18 @@ async function login(siteName) {
       }
 
       try {
-        // Save initial URL on first check
+        const currentUrl = page.url();
+
+        // Save initial URL on first check, skip detection
         if (checks === 1) {
-          initialUrl = page.url();
+          initialUrl = currentUrl;
           console.log(`Initial URL: ${initialUrl}`);
-          return; // skip first check — page just loaded
+          return;
         }
 
-        const currentUrl = page.url();
         const cookies = await context.cookies();
 
         // Only count cookies from the target domain (not SPID/Shibboleth IdP cookies)
-        const targetHost = new URL(loginUrl).hostname;
         const appCookies = cookies.filter(c =>
           c.domain.includes(targetHost) &&
           !c.name.startsWith('_shib') &&
@@ -113,8 +122,12 @@ async function login(siteName) {
           !c.name.startsWith('_shibstate')
         );
 
-        const urlChanged = currentUrl !== initialUrl;
         const onTargetDomain = currentUrl.includes(targetHost);
+
+        // Track if browser has ever visited an external (SPID/IdP) domain
+        if (!onTargetDomain) everLeftTargetDomain = true;
+
+        const urlChanged = currentUrl !== initialUrl;
         const notAuthPage = !currentUrl.includes('/login') &&
                             !currentUrl.includes('/auth') &&
                             !currentUrl.includes('/spid') &&
@@ -127,13 +140,16 @@ async function login(siteName) {
 
         let loggedIn = false;
         if (successPattern) {
-          loggedIn = successPattern.test(currentUrl) && onTargetDomain && hasAppCookies;
+          // Require the browser to have passed through an external auth domain
+          // (SPID provider) at least once — prevents false positives when the
+          // target page sets cookies on initial load before any authentication.
+          loggedIn = everLeftTargetDomain && successPattern.test(currentUrl) && onTargetDomain && hasAppCookies;
         } else {
           loggedIn = urlChanged && onTargetDomain && notAuthPage && hasAppCookies;
         }
 
         if (checks % 5 === 0) {
-          console.log(`[${checks}s] URL: ${currentUrl.slice(0, 80)} | all cookies: ${cookies.length} | app cookies: ${appCookies.length} | changed: ${urlChanged}`);
+          console.log(`[${checks}s] URL: ${currentUrl.slice(0, 80)} | all cookies: ${cookies.length} | app cookies: ${appCookies.length} | changed: ${urlChanged} | leftDomain: ${everLeftTargetDomain}`);
         }
 
         if (loggedIn) {

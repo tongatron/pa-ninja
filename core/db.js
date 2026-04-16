@@ -75,31 +75,6 @@ function initDb() {
   // ── Migrazione: storage_state in sessions ─────────────────────────────────
   try { db.exec('ALTER TABLE sessions ADD COLUMN storage_state TEXT'); } catch {}
 
-  // ── Migrazione: tabelle UniTo ──────────────────────────────────────────────
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS unito_libretto (
-      id         INTEGER PRIMARY KEY AUTOINCREMENT,
-      run_id     INTEGER REFERENCES runs(id) ON DELETE SET NULL,
-      codice     TEXT,
-      materia    TEXT NOT NULL,
-      cfu        INTEGER,
-      voto       TEXT,
-      data_esame TEXT,
-      stato      TEXT,
-      settore    TEXT,
-      raw_json   TEXT,
-      first_seen TEXT DEFAULT (datetime('now')),
-      last_seen  TEXT DEFAULT (datetime('now')),
-      UNIQUE(materia, cfu)
-    );
-
-    CREATE TABLE IF NOT EXISTS unito_carriera (
-      id         INTEGER PRIMARY KEY AUTOINCREMENT,
-      scraped_at TEXT DEFAULT (datetime('now')),
-      data_json  TEXT NOT NULL
-    );
-  `);
-
   return db;
 }
 
@@ -224,7 +199,7 @@ function getResults(filters = {}) {
   if (newOnly) { conditions.push(`(${IS_NEW_EXPR}) = 1`); }
 
   // Escludi sempre i siti con sezione dedicata (messaggi)
-  conditions.push("s.module_path != 'piemonte-tu-messaggi'");
+  conditions.push("s.module_path NOT IN ('piemonte-tu-messaggi','spese-mediche')");
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const offset = (page - 1) * limit;
@@ -247,63 +222,6 @@ function getResults(filters = {}) {
   return { rows, total, page, limit };
 }
 
-// ── UniTo helpers ──────────────────────────────────────────────────────────────
-
-function upsertLibrettoExam(runId, exam) {
-  const db = getDb();
-  const existing = db.prepare(
-    'SELECT id FROM unito_libretto WHERE materia = ? AND cfu = ?'
-  ).get(exam.materia, exam.cfu ?? null);
-
-  if (existing) {
-    db.prepare(`
-      UPDATE unito_libretto SET
-        run_id = ?, codice = ?, voto = ?, data_esame = ?,
-        stato = ?, settore = ?, raw_json = ?, last_seen = datetime('now')
-      WHERE id = ?
-    `).run(runId, exam.codice ?? null, exam.voto ?? null, exam.data_esame ?? null,
-           exam.stato ?? null, exam.settore ?? null, JSON.stringify(exam), existing.id);
-    return { isNew: false };
-  } else {
-    db.prepare(`
-      INSERT INTO unito_libretto (run_id, codice, materia, cfu, voto, data_esame, stato, settore, raw_json)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(runId, exam.codice ?? null, exam.materia, exam.cfu ?? null,
-           exam.voto ?? null, exam.data_esame ?? null, exam.stato ?? null,
-           exam.settore ?? null, JSON.stringify(exam));
-    return { isNew: true };
-  }
-}
-
-function saveCarriera(data) {
-  const db = getDb();
-  db.prepare(`INSERT INTO unito_carriera (data_json) VALUES (?)`).run(JSON.stringify(data));
-  // Tieni solo gli ultimi 10 snapshot
-  db.prepare(`
-    DELETE FROM unito_carriera WHERE id NOT IN (
-      SELECT id FROM unito_carriera ORDER BY scraped_at DESC LIMIT 10
-    )
-  `).run();
-}
-
-function getLibretto() {
-  return getDb().prepare(`
-    SELECT * FROM unito_libretto ORDER BY
-      CASE WHEN stato LIKE '%superato%' OR stato LIKE '%Superato%' THEN 0 ELSE 1 END,
-      data_esame DESC
-  `).all();
-}
-
-function getLatestCarriera() {
-  const row = getDb().prepare(
-    'SELECT * FROM unito_carriera ORDER BY scraped_at DESC LIMIT 1'
-  ).get();
-  if (!row) return null;
-  try { return { scraped_at: row.scraped_at, data: JSON.parse(row.data_json) }; }
-  catch { return { scraped_at: row.scraped_at, data: {} }; }
-}
-
 module.exports = {
   getDb, initDb, upsertResult, getSites, getRuns, getResults,
-  upsertLibrettoExam, saveCarriera, getLibretto, getLatestCarriera,
 };

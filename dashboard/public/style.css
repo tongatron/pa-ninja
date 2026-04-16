@@ -972,6 +972,68 @@ select.filter-input { cursor: pointer; }
   white-space: pre-wrap;
 }
 
+/* ── Spese Mediche ───────────────────────────────────────────────────────────── */
+.spese-years-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 14px;
+  margin-bottom: 32px;
+}
+
+.spese-year-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: border-color var(--transition);
+}
+
+.spese-year-card:hover { border-color: var(--color-primary); }
+
+.spese-year-current {
+  border-top: 3px solid var(--color-success);
+}
+
+.spese-year-label {
+  font-size: 11px;
+  color: var(--color-success);
+  font-weight: 600;
+  min-height: 16px;
+}
+
+.spese-year-number {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--color-text);
+  line-height: 1;
+}
+
+.spese-year-total {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-primary-h);
+}
+
+.spese-year-meta {
+  font-size: 11px;
+  color: var(--color-text-dim);
+  margin-bottom: 6px;
+}
+
+.spese-year-actions { margin-top: auto; }
+
+.spese-current-year { margin-top: 8px; }
+
+.spese-table-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-text);
+  margin-bottom: 14px;
+}
+
 /* ── Scrollbar ───────────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
