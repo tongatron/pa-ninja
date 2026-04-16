@@ -6,9 +6,11 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const Database = require('better-sqlite3');
 
+const DEFAULT_DB_PATH = path.join(__dirname, '..', 'data', 'pa-ninja.db');
+const LEGACY_DB_PATH = path.join(__dirname, '..', 'data', 'pa-scraping.db');
 const DB_PATH = process.env.DB_PATH
   ? path.resolve(__dirname, '..', process.env.DB_PATH)
-  : path.join(__dirname, '..', 'data', 'pa-scraping.db');
+  : (fs.existsSync(DEFAULT_DB_PATH) || !fs.existsSync(LEGACY_DB_PATH) ? DEFAULT_DB_PATH : LEGACY_DB_PATH);
 
 let _db = null;
 

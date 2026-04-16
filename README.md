@@ -26,19 +26,12 @@ npm install
 npx playwright install chromium
 ```
 
-Se preferisci usare SSH:
-
-```bash
-git clone git@github.com:tongatron/pa-ninja.git
-cd pa-ninja
-```
-
 Crea un file `.env` nella root (opzionale):
 
 ```env
 PORT=3001
 PLAYWRIGHT_HEADLESS=true   # false = mostra il browser durante il login
-DB_PATH=data/pa-scraping.db
+DB_PATH=data/pa-ninja.db
 ```
 
 ---
@@ -97,7 +90,7 @@ pa-ninja/
 │   ├── *.js           # Moduli scraper (uno per connettore)
 │   └── *.json         # Config agenti (opzionale, per import/export)
 ├── data/
-│   ├── pa-scraping.db # Database SQLite locale (gitignored)
+│   ├── pa-ninja.db    # Database SQLite locale (gitignored)
 │   └── debug-*.html   # Dump HTML per debug scraper
 └── .env               # Variabili d'ambiente (gitignored)
 ```

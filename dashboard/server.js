@@ -60,6 +60,12 @@ const seededSites = [
     module: 'ader-saldati',
     auth: 'spid',
   },
+  {
+    name: 'Spese Mediche',
+    url: 'https://sistemats5.sanita.finanze.it/730PreServiziCittadinoWeb/pages/includes/consultazione/tabConsultazione.jsf',
+    module: 'spese-mediche',
+    auth: 'spid',
+  },
 ];
 
 for (const site of seededSites) {
@@ -474,6 +480,7 @@ app.get('/api/spese', (req, res) => {
         year:        raw.year || r.external_id?.replace('spese-',''),
         total:       raw.total || r.contract_type || '',
         xlsFilename: raw.xlsFilename || null,
+        headers:     raw.headers || [],
         rows:        raw.rows || [],
         scrapedAt:   raw.scrapedAt || r.last_seen_at,
         isNew:       false,
@@ -591,7 +598,7 @@ app.delete('/api/agents/:key', (req, res) => {
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 const server = app.listen(PORT, () => {
-  console.log(`PA-Scraping dashboard running at http://localhost:${PORT}`);
+  console.log(`PA Ninja dashboard running at http://localhost:${PORT}`);
 });
 
 server.on('error', err => {

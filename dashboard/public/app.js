@@ -364,15 +364,6 @@ function renderServiceCard(group, groupSites, session) {
 async function runSite(siteId) {
   try {
     const result = await post(`/api/sites/${siteId}/run`);
-    setTimeout(() => { if (currentSection === 'sites') loadSites(); }, 3000);
-  } catch (err) {
-    alert(`Errore nell'avvio della run: ${err.message}`);
-  }
-}
-
-async function runSite(siteId) {
-  try {
-    const result = await post(`/api/sites/${siteId}/run`);
     alert(`Run avviata (ID: ${result.runId}). Ricarica la pagina tra qualche istante per vedere i risultati.`);
     // Refresh after 3 seconds
     setTimeout(() => { if (currentSection === 'sites') loadSites(); }, 3000);
@@ -748,26 +739,7 @@ async function loadSpese() {
         </div>`;
     }).join('');
 
-    // Current year table
-    const current = data.find(s => s.year === currentYear);
-    if (current && current.rows && current.rows.length > 0) {
-      currentYearEl.innerHTML = `
-        <h2 class="spese-table-title">Dettaglio spese ${currentYear}</h2>
-        <div class="table-container">
-          <table>
-            <thead><tr>
-              <th>Erogatore</th>
-              <th>Tipologia</th>
-              <th>Importo</th>
-              <th>Data emissione</th>
-              <th>Data pagamento</th>
-            </tr></thead>
-            <tbody>
-              ${current.rows.map(r => `<tr>${r.slice(0,5).map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}
-            </tbody>
-          </table>
-        </div>`;
-    }
+    currentYearEl.innerHTML = '';
   } catch (err) {
     grid.innerHTML = `<div style="color:var(--color-danger);padding:24px">Errore: ${esc(err.message)}</div>`;
   }
