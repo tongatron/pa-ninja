@@ -17,9 +17,20 @@ tutto in un'unica interfaccia, senza condividere credenziali con terze parti.
 - **npm** ≥ 9
 - Browser **Chromium** (installato automaticamente da Playwright)
 
+## Installazione
+
 ```bash
+git clone https://github.com/tongatron/pa-ninja.git
+cd pa-ninja
 npm install
 npx playwright install chromium
+```
+
+Se preferisci usare SSH:
+
+```bash
+git clone git@github.com:tongatron/pa-ninja.git
+cd pa-ninja
 ```
 
 Crea un file `.env` nella root (opzionale):
