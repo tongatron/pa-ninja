@@ -635,32 +635,117 @@ select.filter-input { cursor: pointer; }
 
 .svc-header {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 18px;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 18px;
+  padding: 18px;
   background: var(--color-surface-2);
   border-bottom: 1px solid var(--color-border);
 }
 
-.svc-icon { font-size: 1.1rem; flex: 0 0 auto; }
-
-.svc-name {
-  font-size: 0.95rem;
-  font-weight: 700;
-  margin: 0;
-  flex: 1;
+.svc-identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
 }
 
-.svc-spid {
+.svc-icon { font-size: 1.15rem; flex: 0 0 auto; }
+
+.svc-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.svc-name {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.svc-subtitle {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.svc-access {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 240px;
+  max-width: 320px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: rgba(255,255,255,0.02);
+}
+
+.svc-console-actions {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-left: auto;
 }
 
-.svc-spid-label {
+.svc-access.sess-fresh,
+.svc-access.sess-ok {
+  border-color: rgba(34,197,94,0.35);
+  background: rgba(34,197,94,0.06);
+}
+
+.svc-access.sess-warning {
+  border-color: rgba(245,158,11,0.35);
+  background: rgba(245,158,11,0.08);
+}
+
+.svc-access.sess-expired,
+.svc-access.sess-none {
+  border-color: rgba(239,68,68,0.28);
+  background: rgba(239,68,68,0.08);
+}
+
+.svc-access-neutral {
+  border-color: rgba(148,163,184,0.2);
+  background: rgba(148,163,184,0.04);
+}
+
+.svc-access-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.svc-access-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.svc-access-status,
+.svc-access-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.svc-access-meta {
   font-size: 0.8rem;
   color: var(--color-text-muted);
+}
+
+.svc-access-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .svc-jobs {
@@ -672,7 +757,7 @@ select.filter-input { cursor: pointer; }
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 11px 18px;
+  padding: 12px 18px;
   border-bottom: 1px solid var(--color-border);
   transition: background var(--transition);
 }
@@ -683,6 +768,21 @@ select.filter-input { cursor: pointer; }
   flex: 1;
   font-size: 0.88rem;
   color: var(--color-text);
+}
+
+.job-row[data-job-auth="true"] .job-name::after {
+  content: "SPID";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 10px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(99,102,241,0.12);
+  color: var(--color-primary-h);
+  font-size: 10px;
+  font-weight: 700;
+  vertical-align: middle;
 }
 
 .job-status-wrap {
@@ -701,6 +801,36 @@ select.filter-input { cursor: pointer; }
 .job-actions {
   display: flex;
   gap: 4px;
+}
+
+.section-actions,
+.section-actions-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 900px) {
+  .svc-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .svc-console-actions {
+    margin-left: 0;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .svc-access {
+    max-width: none;
+    min-width: 0;
+  }
+
+  .svc-access-actions {
+    justify-content: flex-start;
+  }
 }
 
 /* ── Sessions grid ───────────────────────────────────────────────────────────── */
@@ -791,6 +921,14 @@ select.filter-input { cursor: pointer; }
 .btn-sm {
   padding: 6px 12px;
   font-size: 12px;
+}
+
+.icon-external {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+  flex: 0 0 auto;
+  vertical-align: -2px;
 }
 
 /* ── Login banner (fixed bottom) ─────────────────────────────────────────────── */
@@ -958,6 +1096,9 @@ select.filter-input { cursor: pointer; }
 }
 
 .message-cta a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 12px;
   color: var(--color-primary);
   font-weight: 600;

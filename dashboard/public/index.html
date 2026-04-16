@@ -140,20 +140,11 @@
             <button id="btn-add-site" class="btn btn-secondary">+ Aggiungi</button>
           </div>
         </div>
+        <p class="section-desc">
+          Stato servizi, ultima esecuzione e accessi SPID in un'unica vista operativa.
+        </p>
         <div id="run-all-status" class="alert hidden"></div>
         <div id="services-grid" class="services-grid">
-          <div class="loading" style="padding:40px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>
-        </div>
-
-        <!-- Accessi SPID inline -->
-        <div class="dashboard-sub-header">
-          <span class="nav-icon">&#x1F510;</span> Accessi SPID
-          <span id="nav-spid-alert" class="nav-alert hidden"></span>
-        </div>
-        <p class="section-desc" style="margin-bottom:12px">
-          Il pulsante <strong>Accedi</strong> apre una finestra Chromium: completa il login lì e la sessione verrà salvata automaticamente.
-        </p>
-        <div id="sessions-grid" class="sessions-grid">
           <div class="loading" style="padding:40px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>
         </div>
       </section>
@@ -162,6 +153,7 @@
       <section id="section-results" class="section">
         <div class="section-header">
           <h1>Risultati</h1>
+          <div id="results-section-actions" class="section-actions"></div>
         </div>
         <div class="filters-bar">
           <select id="filter-site" class="filter-input">
@@ -203,6 +195,7 @@
       <section id="section-messages" class="section">
         <div class="section-header">
           <h1 id="messages-section-title">✉️ Messaggi</h1>
+          <div id="messages-section-actions" class="section-actions"></div>
         </div>
         <div class="filters-bar">
           <select id="msg-filter-unread" class="filter-input" style="max-width:160px">
@@ -229,7 +222,10 @@
       <section id="section-info" class="section">
         <div class="section-header">
           <h1 id="info-section-title">Informazioni</h1>
-          <button id="btn-info-refresh" class="btn btn-secondary">↻ Aggiorna</button>
+          <div class="section-actions">
+            <button id="btn-info-refresh" class="btn btn-secondary">↻ Aggiorna</button>
+            <div id="info-section-actions" class="section-actions-inline"></div>
+          </div>
         </div>
         <div id="info-grid" class="info-kv-grid">
           <div class="loading" style="padding:40px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>
@@ -240,6 +236,7 @@
       <section id="section-spese" class="section">
         <div class="section-header">
           <h1>💊 Spese Mediche</h1>
+          <div id="spese-section-actions" class="section-actions"></div>
         </div>
         <p class="section-desc">
           Spese sanitarie scaricate dal Sistema Tessera Sanitaria. Esegui il sito per aggiornare i dati e scaricare i file XLS.

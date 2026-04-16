@@ -116,6 +116,14 @@ function showAlert(el, type, message) {
   el.textContent = message;
 }
 
+function externalLinkIcon() {
+  return `
+    <svg viewBox="0 0 16 16" aria-hidden="true" class="icon-external">
+      <path d="M6 3.25h6.75V10h-1.5V5.81L4.78 12.28l-1.06-1.06L10.19 4.75H6v-1.5Z"></path>
+      <path d="M12 12.75H3.75V4.5H7v-1.5H3.5A1.25 1.25 0 0 0 2.25 4.25v8.5A1.25 1.25 0 0 0 3.5 14h8.5a1.25 1.25 0 0 0 1.25-1.25V9.5H12v3.25Z"></path>
+    </svg>`;
+}
+
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 
 async function loadDashboard() {
@@ -151,6 +159,7 @@ async function loadDashboard() {
 
 function updateSpidAlert(count) {
   const dot = document.getElementById('nav-spid-alert');
+  if (!dot) return;
   if (count === undefined) {
     // called without count → re-fetch
     get('/api/stats').then(s => updateSpidAlert((s.spidNeedAuth || []).length)).catch(() => {});
@@ -234,6 +243,7 @@ const SERVICE_GROUPS = [
   { key: 'lavoro-piemonte',name: 'Lavoro Piemonte',    icon: '🏢',  patterns: ['lavoro-piemonte'] },
   { key: 'inps',           name: 'INPS',                icon: '🏛️', patterns: ['inps'] },
   { key: 'ader',           name: 'AdE Riscossione',     icon: '🏦',  patterns: ['ader'] },
+  { key: 'spese-mediche',  name: 'Spese Mediche',       icon: '💊',  patterns: ['spese-mediche'] },
 ];
 
 const JOB_LABELS = {
@@ -246,6 +256,7 @@ const JOB_LABELS = {
   'inps-domande':             'Consultazione domande',
   'inps-isee':                'ISEE dichiarazioni',
   'ader-saldati':             'Saldati',
+  'spese-mediche':            'Spese Mediche',
 };
 
 let sitesData = [];
@@ -265,6 +276,20 @@ async function loadSites() {
   } catch (err) {
     grid.innerHTML = `<div style="color:var(--color-danger);padding:24px">Errore: ${esc(err.message)}</div>`;
   }
+}
+
+async function ensureSitesLoaded() {
+  if (sitesData.length) return sitesData;
+  sitesData = await get('/api/sites');
+  return sitesData;
+}
+
+function getSiteByModule(modulePath) {
+  return sitesData.find(site => site.module_path === modulePath) || null;
+}
+
+function getPrimaryServiceSite(groupSites) {
+  return groupSites.find(site => site.auth_type !== 'none') || groupSites[0] || null;
 }
 
 function renderSessionsGrid(sessions) {
@@ -311,19 +336,47 @@ function renderServiceCards(sites, sessions) {
 }
 
 function renderServiceCard(group, groupSites, session) {
-  // Intestazione SPID (se presente)
-  let spidHtml = '';
+  const spidJobs = groupSites.filter(site => site.auth_type !== 'none');
+  const protectedCount = spidJobs.length;
+  const primarySite = getPrimaryServiceSite(groupSites);
+  const serviceRunArgs = `${esc(JSON.stringify(groupSites.map(site => site.id)))}, ${esc(JSON.stringify(group.name))}`;
+  let accessHtml = `
+    <div class="svc-access svc-access-neutral">
+      <div class="svc-access-top">
+        <span class="svc-access-title">Accesso</span>
+        <span class="svc-access-badge">Non richiesto</span>
+      </div>
+      <div class="svc-access-meta">Questo servizio non usa una sessione SPID dedicata.</div>
+    </div>`;
+
   if (session) {
     const ST = SESSION_STATUS[session.status] || SESSION_STATUS.none;
     const isOk = session.status === 'fresh' || session.status === 'ok';
-    spidHtml = `
-      <div class="svc-spid">
-        <span class="sess-status-dot ${ST.cls}" style="font-size:10px">●</span>
-        <span class="svc-spid-label">${isOk ? (session.saved_at ? timeAgo(session.saved_at) : 'Autenticato') : ST.label}</span>
-        <button class="btn btn-sm ${isOk ? 'btn-ghost' : 'btn-primary'}"
+    const accessMeta = session.saved_at
+      ? `Ultimo accesso ${timeAgo(session.saved_at)} · ${session.cookie_count} cookie`
+      : 'Nessuna sessione salvata';
+    accessHtml = `
+      <div class="svc-access ${ST.cls}">
+        <div class="svc-access-top">
+          <span class="svc-access-title">Accesso SPID</span>
+          <span class="svc-access-status"><span class="sess-status-dot ${ST.cls}">●</span>${ST.label}</span>
+        </div>
+        <div class="svc-access-meta">${accessMeta}</div>
+        <div class="svc-access-actions">
+          <button class="btn btn-sm ${isOk ? 'btn-ghost' : 'btn-primary'}"
           onclick="loginFromSite(${session.site_id}, '${esc(session.site_name)}', '${esc(session.login_url || '')}')">
           🔑 ${session.saved_at ? 'Rinnova' : 'Accedi'}
         </button>
+        </div>
+      </div>`;
+  } else if (protectedCount > 0) {
+    accessHtml = `
+      <div class="svc-access sess-none">
+        <div class="svc-access-top">
+          <span class="svc-access-title">Accesso SPID</span>
+          <span class="svc-access-status"><span class="sess-status-dot sess-none">○</span>Non autenticato</span>
+        </div>
+        <div class="svc-access-meta">Serve una sessione attiva per ${protectedCount} ${protectedCount === 1 ? 'job protetto' : 'job protetti'}.</div>
       </div>`;
   }
 
@@ -339,10 +392,11 @@ function renderServiceCard(group, groupSites, session) {
     const disabledBadge = site.enabled ? '' : ' <span class="badge badge-none" style="font-size:10px">off</span>';
 
     return `
-      <div class="job-row">
+      <div class="job-row" data-job-auth="${site.auth_type !== 'none' ? 'true' : 'false'}">
         <span class="job-name">${esc(label)}${disabledBadge}</span>
         <span class="job-status-wrap">${statusHtml}${timeHtml}</span>
         <div class="job-actions">
+          ${site.url ? `<button class="btn btn-icon btn-ghost" title="Apri link" onclick="openLink(${esc(JSON.stringify(site.url))})">${externalLinkIcon()}</button>` : ''}
           <button class="btn btn-icon btn-secondary" title="Esegui" onclick="runSite(${site.id})">&#9654;</button>
           <button class="btn btn-icon btn-ghost"      title="Modifica" onclick="editSite(${site.id})">&#9998;</button>
           <button class="btn btn-icon btn-danger"     title="Elimina"  onclick="deleteSite(${site.id}, '${esc(site.name)}')">&#128465;</button>
@@ -353,9 +407,21 @@ function renderServiceCard(group, groupSites, session) {
   return `
     <div class="service-card">
       <div class="svc-header">
-        <span class="svc-icon">${group.icon}</span>
-        <h2 class="svc-name">${esc(group.name)}</h2>
-        ${spidHtml}
+        <div class="svc-identity">
+          <span class="svc-icon">${group.icon}</span>
+          <div class="svc-heading">
+            <h2 class="svc-name">${esc(group.name)}</h2>
+            <div class="svc-subtitle">
+              ${groupSites.length} ${groupSites.length === 1 ? 'job' : 'job'}
+              ${protectedCount > 0 ? ` · ${protectedCount} con accesso SPID` : ' · accesso non richiesto'}
+            </div>
+          </div>
+        </div>
+        <div class="svc-console-actions">
+          <button class="btn btn-secondary btn-sm" onclick='runService(${serviceRunArgs})'>&#9654; Esegui servizio</button>
+          ${primarySite?.url ? `<button class="btn btn-ghost btn-sm" onclick="openLink(${esc(JSON.stringify(primarySite.url))})">${externalLinkIcon()} Apri portale</button>` : ''}
+        </div>
+        ${accessHtml}
       </div>
       <div class="svc-jobs">${jobsHtml}</div>
     </div>`;
@@ -370,6 +436,56 @@ async function runSite(siteId) {
   } catch (err) {
     alert(`Errore nell'avvio della run: ${err.message}`);
   }
+}
+
+async function runService(siteIds, serviceName) {
+  const ids = Array.isArray(siteIds) ? siteIds : [];
+  if (!ids.length) return;
+
+  const statusEl = document.getElementById('run-all-status');
+  if (statusEl) showAlert(statusEl, 'info', `Avvio ${serviceName} in corso...`);
+
+  const results = await Promise.all(ids.map(async siteId => {
+    try {
+      const result = await post(`/api/sites/${siteId}/run`);
+      return { ok: true, runId: result.runId };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  }));
+
+  const failures = results.filter(result => !result.ok);
+  if (statusEl) {
+    if (failures.length) {
+      showAlert(statusEl, 'error', `${serviceName}: ${failures.length} job non avviati.`);
+    } else {
+      const runIds = results.map(result => result.runId).filter(Boolean);
+      showAlert(statusEl, 'success', `${serviceName} avviato (${runIds.length} job).`);
+    }
+  }
+
+  setTimeout(() => { if (currentSection === 'sites') loadSites(); }, 3000);
+}
+
+function openLink(url) {
+  if (!url) return;
+  window.open(url, '_blank', 'noopener');
+}
+
+function renderSectionLinkActions(site) {
+  if (!site) return '';
+  const parts = [];
+  if (site.url) {
+    parts.push(`<button class="btn btn-ghost btn-sm" onclick="openLink(${esc(JSON.stringify(site.url))})">${externalLinkIcon()} Apri link</button>`);
+  }
+  parts.push(`<button class="btn btn-secondary btn-sm" onclick="runSite(${site.id})">&#9654; Esegui job</button>`);
+  return parts.join('');
+}
+
+function setSectionActions(containerId, site) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.innerHTML = site ? renderSectionLinkActions(site) : '';
 }
 
 async function loginFromSite(siteId, siteName, loginUrl) {
@@ -470,6 +586,9 @@ async function loadResultsFilters(preSelectModule) {
     const currentProv = provSelect.value;
     provSelect.innerHTML = '<option value="">Tutte le province</option>' +
       provinces.map(p => `<option value="${esc(p)}" ${p === currentProv ? 'selected' : ''}>${esc(p)}</option>`).join('');
+
+    const currentModule = preSelectModule || sites.find(s => String(s.id) === String(siteSelect.value))?.module_path || '';
+    setSectionActions('results-section-actions', currentModule ? sites.find(s => s.module_path === currentModule) : null);
   } catch (err) {
     console.error('loadResultsFilters:', err);
   }
@@ -547,7 +666,13 @@ document.getElementById('btn-reset-filters').addEventListener('click', () => {
   document.getElementById('filter-keyword').value = '';
   document.getElementById('filter-expires').value = '';
   document.getElementById('filter-new-only').checked = false;
+  setSectionActions('results-section-actions', null);
   loadResults(1);
+});
+document.getElementById('filter-site').addEventListener('change', async e => {
+  await ensureSitesLoaded();
+  const site = sitesData.find(s => String(s.id) === String(e.target.value)) || null;
+  setSectionActions('results-section-actions', site);
 });
 document.getElementById('filter-keyword').addEventListener('keydown', e => {
   if (e.key === 'Enter') loadResults(1);
@@ -597,12 +722,14 @@ let _currentMsgModule = null;
 
 async function loadMessages(modulePath) {
   if (modulePath) _currentMsgModule = modulePath;
+  await ensureSitesLoaded();
   const grid = document.getElementById('messages-grid');
   const countEl = document.getElementById('msg-count');
   const titleEl = document.getElementById('messages-section-title');
   if (titleEl && _currentMsgModule) {
     titleEl.textContent = '✉️ ' + (JOB_LABELS[_currentMsgModule] || _currentMsgModule);
   }
+  setSectionActions('messages-section-actions', _currentMsgModule ? getSiteByModule(_currentMsgModule) : null);
   grid.innerHTML = '<div class="loading" style="padding:32px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>';
   countEl.textContent = '';
 
@@ -691,7 +818,7 @@ function showMessageDetail(jsonStr) {
     </div>
     ${tags.length ? `<div class="message-tags" style="margin-bottom:14px">${tags.map(t => `<span class="message-tag">${esc(t)}</span>`).join('')}</div>` : ''}
     ${bodyHtml ? `<div class="message-detail-body">${esc(bodyHtml)}</div>` : '<p style="color:var(--color-text-muted);font-size:13px">(nessun testo)</p>'}
-    ${m.call_to_action ? `<div class="message-cta"><a href="${esc(m.call_to_action)}" target="_blank" rel="noopener">→ Apri link</a></div>` : ''}
+    ${m.call_to_action ? `<div class="message-cta"><a href="${esc(m.call_to_action)}" target="_blank" rel="noopener">${externalLinkIcon()} Apri link</a></div>` : ''}
   `;
 
   msgModal.classList.remove('hidden');
@@ -707,8 +834,10 @@ msgModal.addEventListener('click', e => {
 // ── Spese Mediche ─────────────────────────────────────────────────────────────
 
 async function loadSpese() {
+  await ensureSitesLoaded();
   const grid = document.getElementById('spese-years-grid');
   const currentYearEl = document.getElementById('spese-current-year');
+  setSectionActions('spese-section-actions', getSiteByModule('spese-mediche'));
   grid.innerHTML = '<div class="loading" style="padding:32px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>';
   currentYearEl.innerHTML = '';
 
@@ -803,7 +932,7 @@ function renderSessionCard(s) {
         <button class="btn btn-primary btn-sm" onclick="startLogin(${s.site_id}, '${esc(s.site_name)}', '${esc(s.login_url || '')}')">
           ${loginBtnLabel}
         </button>
-        ${s.login_url ? `<a class="btn btn-ghost btn-sm" href="${esc(s.login_url)}" target="_blank" rel="noopener" title="Apri il sito nel browser">↗ Apri sito</a>` : ''}
+        ${s.login_url ? `<a class="btn btn-ghost btn-sm" href="${esc(s.login_url)}" target="_blank" rel="noopener" title="Apri il sito nel browser">${externalLinkIcon()} Apri sito</a>` : ''}
       </div>
     </div>`;
 }
@@ -910,12 +1039,14 @@ let _infoModule = null;
 document.getElementById('btn-info-refresh').addEventListener('click', () => loadInfo(_infoModule, true));
 
 async function loadInfo(modulePath, force = false) {
+  await ensureSitesLoaded();
   _infoModule = modulePath;
   const grid  = document.getElementById('info-grid');
   const title = document.getElementById('info-section-title');
 
   // Aggiorna titolo con il label del job
   title.textContent = JOB_LABELS[modulePath] || modulePath || 'Informazioni';
+  setSectionActions('info-section-actions', modulePath ? getSiteByModule(modulePath) : null);
 
   grid.innerHTML = '<div class="loading" style="padding:40px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>';
 
