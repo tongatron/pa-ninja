@@ -66,6 +66,12 @@ const seededSites = [
     module: 'spese-mediche',
     auth: 'spid',
   },
+  {
+    name: 'Intesa Sanpaolo – Conto',
+    url: 'https://www.intesasanpaolo.com/ndce/webapp/ib-globalposition-v1/homepage',
+    module: 'intesa-sanpaolo-conto',
+    auth: 'basic',
+  },
 ];
 
 for (const site of seededSites) {
@@ -300,7 +306,7 @@ app.get('/api/results/provinces', (req, res) => {
   }
 });
 
-// POST /api/sites/:id/login — launch SPID login (Playwright headful)
+// POST /api/sites/:id/login — launch browser login (Playwright headful)
 app.post('/api/sites/:id/login', (req, res) => {
   try {
     const siteId = Number(req.params.id);
@@ -308,7 +314,7 @@ app.post('/api/sites/:id/login', (req, res) => {
     if (!site) return res.status(404).json({ error: 'Site not found' });
 
     res.status(202).json({
-      message: 'SPID login started. A browser window will open. Complete the login there.',
+      message: 'Browser login started. A browser window will open. Complete the login there.',
       instructions: `Run: node core/session.js login --site "${site.name}"`
     });
 
@@ -317,9 +323,9 @@ app.post('/api/sites/:id/login', (req, res) => {
       try {
         const { login } = require('../core/session');
         await login(site.name);
-        console.log(`SPID login completed for ${site.name}`);
+        console.log(`Browser login completed for ${site.name}`);
       } catch (err) {
-        console.error(`SPID login failed for ${site.name}:`, err.message);
+        console.error(`Browser login failed for ${site.name}:`, err.message);
       }
     });
   } catch (err) {
@@ -505,6 +511,230 @@ app.get('/api/spese/file/:filename', (req, res) => {
   }
 });
 
+// ── Intesa Sanpaolo endpoints ────────────────────────────────────────────────
+
+app.get('/api/intesa', (req, res) => {
+  try {
+    const site = db.prepare("SELECT id FROM sites WHERE module_path = 'intesa-sanpaolo-conto'").get();
+    if (!site) return res.json({ summary: null, operations: [], files: [] });
+
+    const rows = db.prepare(`
+      SELECT * FROM results
+      WHERE site_id = ?
+      ORDER BY last_seen_at DESC, external_id DESC
+    `).all(site.id);
+
+    let summary = null;
+    const operations = [];
+    const files = [];
+
+    for (const row of rows) {
+      let raw = {};
+      try { raw = JSON.parse(row.raw_json || '{}'); } catch {}
+
+      if (raw.kind === 'summary' && !summary) {
+        summary = {
+          accountName: raw.accountName || row.title || 'Conto corrente',
+          accountHolder: raw.accountHolder || '',
+          ibanMasked: raw.ibanMasked || '',
+          accountingBalance: raw.accountingBalance || '',
+          availableBalance: raw.availableBalance || '',
+          balanceDate: raw.balanceDate || '',
+          searchFrom: raw.searchFrom || '',
+          searchTo: raw.searchTo || '',
+          downloadedAt: raw.downloadedAt || row.last_seen_at,
+          fileName: raw.fileName || null,
+        };
+      } else if (raw.kind === 'operation') {
+        operations.push({
+          id: row.id,
+          externalId: row.external_id,
+          bookingDate: raw.bookingDate || '',
+          valueDate: raw.valueDate || '',
+          description: raw.description || row.title || '',
+          amount: raw.amount || '',
+          sign: raw.sign || '',
+          status: raw.status || '',
+          accountingState: raw.accountingState || '',
+          category: raw.category || '',
+          raw,
+        });
+      } else if (raw.kind === 'file') {
+        files.push({
+          id: row.id,
+          externalId: row.external_id,
+          fileName: raw.fileName || row.title || '',
+          filePath: raw.filePath || '',
+          downloadedAt: raw.downloadedAt || row.last_seen_at,
+          fromDate: raw.fromDate || '',
+          toDate: raw.toDate || '',
+        });
+      }
+    }
+
+    operations.sort((a, b) => {
+      const aKey = `${a.bookingDate || ''} ${a.valueDate || ''}`;
+      const bKey = `${b.bookingDate || ''} ${b.valueDate || ''}`;
+      return bKey.localeCompare(aKey);
+    });
+
+    files.sort((a, b) => String(b.downloadedAt || '').localeCompare(String(a.downloadedAt || '')));
+
+    res.json({ summary, operations, files });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/intesa/file/:filename', (req, res) => {
+  try {
+    const filename = path.basename(req.params.filename || '');
+    const filePath = path.join(__dirname, '..', 'data', 'intesa-sanpaolo', filename);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
+    res.download(filePath, filename);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── AdE Riscossione endpoints ────────────────────────────────────────────────
+
+function parseAderRows() {
+  const site = db.prepare("SELECT id FROM sites WHERE module_path = 'ader-saldati'").get();
+  if (!site) {
+    return { daSaldare: [], saldate: [], procedureAttive: [], rateizzazione: [] };
+  }
+
+  const rows = db.prepare(`
+    SELECT * FROM results
+    WHERE site_id = ?
+    ORDER BY last_seen_at DESC, external_id DESC
+  `).all(site.id);
+
+  const result = {
+    daSaldare: [],
+    saldate: [],
+    procedureAttive: [],
+    rateizzazione: [],
+  };
+
+  for (const row of rows) {
+    let raw = {};
+    try { raw = JSON.parse(row.raw_json || '{}'); } catch {}
+
+    const section = raw.section;
+    if (!section || !result[section]) continue;
+
+    if (raw.headers || raw.cells || raw.structured) {
+      result[section].push({
+        id: row.id,
+        externalId: row.external_id,
+        title: row.title || '',
+        province: row.province || raw.provinceScope || '',
+        amount: row.contract_type || '',
+        location: row.location || '',
+        lastSeenAt: row.last_seen_at || null,
+        headers: Array.isArray(raw.headers) ? raw.headers : [],
+        cells: Array.isArray(raw.cells) ? raw.cells : [],
+        structured: raw.structured || {},
+        pageIndex: raw.pageIndex || null,
+        text: raw.text || '',
+        artifactFileName: raw.artifactPath ? path.basename(raw.artifactPath) : null,
+        artifactPath: raw.artifactPath || null,
+      });
+      continue;
+    }
+
+    if (raw.empty) {
+      result[section].push({
+        id: row.id,
+        externalId: row.external_id,
+        title: row.title || '',
+        province: row.province || (Array.isArray(raw.provinces) ? raw.provinces.join(', ') : ''),
+        empty: true,
+        text: raw.text || '',
+        lastSeenAt: row.last_seen_at || null,
+        artifactFileName: raw.artifactPath ? path.basename(raw.artifactPath) : null,
+        artifactPath: raw.artifactPath || null,
+      });
+      continue;
+    }
+
+    result[section].push({
+      id: row.id,
+      externalId: row.external_id,
+      title: row.title || '',
+      province: row.province || raw.province || '',
+      text: raw.text || '',
+      lastSeenAt: row.last_seen_at || null,
+      artifactFileName: raw.artifactPath ? path.basename(raw.artifactPath) : null,
+      artifactPath: raw.artifactPath || null,
+    });
+  }
+
+  return result;
+}
+
+app.get('/api/ader', (req, res) => {
+  try {
+    res.json(parseAderRows());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/ader/artifact/:filename', (req, res) => {
+  try {
+    const filename = path.basename(req.params.filename || '');
+    const filePath = path.join(__dirname, '..', 'data', 'ader-saldati', filename);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
+    res.sendFile(filePath);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/ader/export/:section', (req, res) => {
+  try {
+    const section = req.params.section;
+    if (!['daSaldare', 'saldate'].includes(section)) {
+      return res.status(400).json({ error: 'Unsupported section' });
+    }
+
+    const province = (req.query.province || '').trim();
+    const data = parseAderRows()[section]
+      .filter(row => !row.empty && row.headers?.length)
+      .filter(row => !province || row.province === province);
+
+    if (!data.length) return res.status(404).json({ error: 'No tabular data found' });
+
+    const headerSet = new Set();
+    for (const row of data) {
+      row.headers.forEach(header => headerSet.add(header));
+    }
+    const headers = [...headerSet];
+
+    const csvRows = [
+      ['Provincia', ...headers],
+      ...data.map(row => [
+        row.province || '',
+        ...headers.map(header => String(row.structured?.[header] || '')),
+      ]),
+    ];
+
+    const csv = '\uFEFF' + csvRows
+      .map(cols => cols.map(value => `"${String(value).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+
+    const suffix = province ? `-${province.toLowerCase().replace(/[^a-z0-9]+/g, '-')}` : '';
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="ader-${section}${suffix}.csv"`);
+    res.send(csv);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Stats endpoint for dashboard ──────────────────────────────────────────────
 app.get('/api/stats', (req, res) => {
   try {
@@ -516,12 +746,13 @@ app.get('/api/stats', (req, res) => {
     `).get().cnt;
     const totalResults = db.prepare('SELECT COUNT(*) AS cnt FROM results').get().cnt;
 
-    // SPID sites that have no session or session older than 8h
+    // SPID-only sites that have no session or a stale session.
+    // Keep other auth flows (for example basic banking login) out of the SPID panel.
     const spidSites = db.prepare(`
       SELECT s.id, s.name, se.saved_at
       FROM sites s
       LEFT JOIN sessions se ON se.site_id = s.id
-      WHERE s.auth_type != 'none' AND s.enabled = 1
+      WHERE s.auth_type = 'spid' AND s.enabled = 1
     `).all();
     const spidNeedAuth = spidSites.filter(s => {
       if (!s.saved_at) return true;

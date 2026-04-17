@@ -1,42 +1,452 @@
 'use strict';
 
-/**
- * Scraper – AdE Riscossione: Situazione debitoria → Saldati
- * URL: https://servizi.agenziaentrateriscossione.gov.it/estratto-conto/situazione-debitoria#tab-saldati
- *
- * Estrae la tabella dei debiti saldati dall'area riservata
- * Agenzia delle Entrate-Riscossione (login SPID/CIE).
- *
- * Strategia:
- *   1. Intercettazione risposte JSON/API (Angular SPA)
- *   2. Fallback: estrazione DOM della tabella renderizzata
- */
+const fs = require('fs');
+const path = require('path');
 
 const BASE = 'https://servizi.agenziaentrateriscossione.gov.it';
-const URL_SALDATI = `${BASE}/estratto-conto/situazione-debitoria#tab-saldati`;
+const HOME_URL = `${BASE}/equitaliaServiziWeb/home/index.do`;
+const SEARCH_URL = `${BASE}/estratto-conto/home`;
+const DEBIT_URL = `${BASE}/estratto-conto/situazione-debitoria#tab-saldati`;
+const ARTIFACT_DIR = path.join(__dirname, '..', 'data', 'ader-saldati');
 
 function isAuthPage(url) {
   return /login|spid|sso|idp|identity|agid|entratel|fiscoonline/i.test(url) &&
-         !url.includes('estratto-conto');
+         !url.includes('estratto-conto') &&
+         !url.includes('equitaliaServiziWeb/home');
+}
+
+function slug(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
+}
+
+async function clickFirst(page, selectors) {
+  for (const selector of selectors) {
+    const locator = page.locator(selector).first();
+    try {
+      if (await locator.count()) {
+        await locator.click({ timeout: 4000 });
+        return true;
+      }
+    } catch {}
+  }
+  return false;
+}
+
+async function clickByLooseText(page, regex) {
+  return page.evaluate((pattern) => {
+    const rx = new RegExp(pattern, 'i');
+    const candidates = [...document.querySelectorAll('button, a, [role="button"], li, span, div')];
+    const target = candidates.find(el => {
+      const text = [
+        el.innerText,
+        el.textContent,
+        el.getAttribute('aria-label'),
+        el.getAttribute('title'),
+      ].filter(Boolean).join(' ');
+      const style = window.getComputedStyle(el);
+      const visible = style.display !== 'none' && style.visibility !== 'hidden' && el.offsetParent !== null;
+      return visible && rx.test(text);
+    });
+    if (!target) return false;
+    target.click();
+    return true;
+  }, regex.source);
+}
+
+async function waitQuiet(page, timeout = 1500) {
+  await page.waitForLoadState('networkidle').catch(() => {});
+  await page.waitForTimeout(timeout);
+}
+
+async function ensureAuthenticated(page) {
+  console.log('[ader-saldati] Navigazione a', HOME_URL);
+  await page.goto(HOME_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await waitQuiet(page, 2000);
+
+  if (isAuthPage(page.url())) {
+    throw new Error('Sessione AdE Riscossione scaduta — vai in Accessi SPID e rifai il login.');
+  }
+}
+
+async function openSituazioneDebitoria(page) {
+  const clicked = await clickFirst(page, [
+    'a:has-text("Situazione debitoria")',
+    'button:has-text("Situazione debitoria")',
+  ]) || await clickByLooseText(page, /situazione debitoria.*consulta e paga/i);
+
+  if (!clicked) {
+    await page.goto(DEBIT_URL, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
+  }
+
+  await waitQuiet(page, 2500);
+  console.log('[ader-saldati] URL situazione debitoria:', page.url());
+}
+
+async function openSearchData(page) {
+  await clickFirst(page, [
+    'a:has-text("Accedi ai Dati di ricerca")',
+    'button:has-text("Accedi ai Dati di ricerca")',
+    'input[value*="Accedi ai Dati di ricerca"]',
+  ]).catch(() => {});
+
+  await clickByLooseText(page, /accedi ai dati di ricerca/i).catch(() => {});
+  await waitQuiet(page, 1500);
+}
+
+async function selectAllProvinces(page) {
+  const provinces = await page.evaluate(() => {
+    const clean = text => (text || '').replace(/\s+/g, ' ').trim();
+    const selected = [];
+
+    const ambito = document.querySelector('#ambito');
+    if (ambito && ambito.options?.length) {
+      return [...ambito.options]
+        .filter(option => !option.disabled && option.value)
+        .map(option => clean(option.textContent || option.value))
+        .filter(Boolean);
+    }
+
+    const provinceInputs = [...document.querySelectorAll('input[type="checkbox"], input[type="radio"]')]
+      .filter(input => {
+        const label = input.labels?.[0]?.innerText || input.closest('label')?.innerText || '';
+        const text = [
+          label,
+          input.getAttribute('aria-label'),
+          input.name,
+          input.id,
+          input.value,
+        ].filter(Boolean).join(' ');
+        return /provin/i.test(text) || /tutte/i.test(text);
+      });
+
+    if (provinceInputs.length) {
+      for (const input of provinceInputs) {
+        const isAll = /tutte/i.test([
+          input.labels?.[0]?.innerText || '',
+          input.value || '',
+          input.id || '',
+        ].join(' '));
+        const wantsChecked = input.type === 'checkbox' || isAll;
+        if (wantsChecked && !input.checked) {
+          input.click();
+        }
+        if (input.checked) {
+          selected.push(clean(input.labels?.[0]?.innerText || input.value || input.id || 'Provincia'));
+        }
+      }
+      return [...new Set(selected)];
+    }
+
+    const select = [...document.querySelectorAll('select')].find(el => {
+      const blob = [
+        el.name,
+        el.id,
+        el.getAttribute('aria-label'),
+        el.closest('label')?.innerText,
+        el.parentElement?.innerText,
+      ].filter(Boolean).join(' ');
+      return /provin/i.test(blob);
+    });
+
+    if (select) {
+      for (const option of [...select.options]) {
+        if (option.disabled) continue;
+        option.selected = true;
+        selected.push(clean(option.textContent || option.value));
+      }
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      return [...new Set(selected)];
+    }
+
+    return [];
+  });
+
+  await waitQuiet(page, 800);
+  return provinces.filter(Boolean);
+}
+
+async function openTab(page, name) {
+  const anchors = {
+    daSaldare: '#tab-da-saldare',
+    saldate: '#tab-saldati',
+    procedureAttive: '#tab-procedure-attive',
+    rateizzazione: '#tab-rateizzazioni',
+  };
+  const patterns = {
+    daSaldare: /da saldare/i,
+    saldate: /saldati|saldate/i,
+    procedureAttive: /procedure attive/i,
+    rateizzazione: /rateizz/i,
+  };
+  const regex = patterns[name];
+  if (!regex) return false;
+
+  const clicked = await clickFirst(page, [
+    `a[href="${anchors[name]}"]`,
+    `a[href*="${anchors[name]}"]`,
+    `button[data-target="${anchors[name]}"]`,
+  ]) || await clickByLooseText(page, regex);
+
+  if (clicked) {
+    await waitQuiet(page, 1800);
+  }
+  return clicked;
+}
+
+async function readVisibleSection(page) {
+  return page.evaluate(() => {
+    const clean = text => (text || '').replace(/\s+/g, ' ').trim();
+    const body = clean(document.body.innerText || '');
+    return body.slice(0, 20000);
+  });
+}
+
+async function captureSectionArtifact(page, stem) {
+  if (!fs.existsSync(ARTIFACT_DIR)) fs.mkdirSync(ARTIFACT_DIR, { recursive: true });
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const pngPath = path.join(ARTIFACT_DIR, `${stem}-${timestamp}.png`);
+  await page.screenshot({ path: pngPath, fullPage: true }).catch(() => {});
+  return pngPath;
+}
+
+async function extractTablePage(page, section, provinceScope, pageIndex) {
+  return page.evaluate(({ section, provinceScope, pageIndex, tabSelector }) => {
+    const clean = text => (text || '').replace(/\s+/g, ' ').trim();
+    const scope = document.querySelector(tabSelector) || document;
+    const tables = [...scope.querySelectorAll('table')];
+    const rows = [];
+
+    for (const table of tables) {
+      const headers = [...table.querySelectorAll('th')].map(th => clean(th.innerText)).filter(Boolean);
+      const bodyRows = [...table.querySelectorAll('tbody tr')];
+      if (!bodyRows.length) continue;
+
+      for (const tr of bodyRows) {
+        const cells = [...tr.querySelectorAll('td')].map(td => clean(td.innerText)).filter(Boolean);
+        if (!cells.length) continue;
+        const structured = {};
+        headers.forEach((header, idx) => {
+          if (cells[idx] !== undefined) structured[header] = cells[idx];
+        });
+        rows.push({
+          section,
+          provinceScope,
+          pageIndex,
+          headers,
+          cells,
+          structured,
+          text: clean(tr.innerText),
+        });
+      }
+
+      if (rows.length) break;
+    }
+
+    return rows;
+  }, {
+    section,
+    provinceScope,
+    pageIndex,
+    tabSelector: ({
+      daSaldare: '#tab-da-saldare',
+      saldate: '#tab-saldati',
+      procedureAttive: '#tab-procedure-attive',
+      rateizzazione: '#tab-rateizzazioni',
+    })[section],
+  });
+}
+
+async function readTabContent(page, section) {
+  return page.evaluate(({ tabSelector }) => {
+    const clean = text => (text || '').replace(/\s+/g, ' ').trim();
+    const node = document.querySelector(tabSelector);
+    if (!node) return '';
+    return clean(node.innerText || node.textContent || '');
+  }, {
+    tabSelector: ({
+      daSaldare: '#tab-da-saldare',
+      saldate: '#tab-saldati',
+      procedureAttive: '#tab-procedure-attive',
+      rateizzazione: '#tab-rateizzazioni',
+    })[section],
+  });
+}
+
+async function nextPagination(page) {
+  const clicked = await clickFirst(page, [
+    'a:has-text(">>")',
+    'button:has-text(">>")',
+    'a:has-text(">")',
+    'button:has-text(">")',
+    '[aria-label*="successiva" i]',
+    '[title*="successiva" i]',
+  ]) || await clickByLooseText(page, /^(>|>>|pagina successiva|ultima pagina)$/i);
+
+  if (clicked) {
+    await waitQuiet(page, 1800);
+  }
+  return clicked;
+}
+
+async function collectPaginatedTable(page, section, provinces) {
+  const provinceScope = provinces.length ? provinces.join(', ') : 'tutte';
+  const seenFingerprints = new Set();
+  const allRows = [];
+
+  for (let pageIndex = 1; pageIndex <= 30; pageIndex++) {
+    const rows = await extractTablePage(page, section, provinceScope, pageIndex);
+    const fingerprint = JSON.stringify(rows.map(row => row.text));
+    if (!rows.length || seenFingerprints.has(fingerprint)) break;
+    seenFingerprints.add(fingerprint);
+    allRows.push(...rows);
+
+    const advanced = await nextPagination(page);
+    if (!advanced) break;
+  }
+
+  return allRows;
+}
+
+async function openResultsFor(page, section, provinceLabel) {
+  const targetId = section === 'daSaldare' ? '#submit_da_saldare' : '#submit_saldati';
+
+  if (provinceLabel) {
+    try {
+      await page.selectOption('#ambito', { label: provinceLabel });
+    } catch {
+      const changed = await page.evaluate((label) => {
+        const clean = text => (text || '').replace(/\s+/g, ' ').trim();
+        const ambito = document.querySelector('#ambito');
+        if (!ambito) return false;
+        const option = [...ambito.options].find(opt => clean(opt.textContent) === label);
+        if (!option) return false;
+        ambito.value = option.value;
+        ambito.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+      }, provinceLabel);
+      if (!changed) return false;
+    }
+  }
+
+  const clicked = await clickFirst(page, [targetId, `input${targetId}`]) ||
+    await page.evaluate((selector) => {
+      const button = document.querySelector(selector);
+      if (!button) return false;
+      button.click();
+      return true;
+    }, targetId);
+
+  if (!clicked) return false;
+  await waitQuiet(page, 2500);
+
+  const resolvedProvince = await readResolvedProvince(page);
+  if (provinceLabel && resolvedProvince && resolvedProvince !== provinceLabel) {
+    console.log(`[ader-saldati] Provincia attesa "${provinceLabel}" ma pagina su "${resolvedProvince}"`);
+    return false;
+  }
+  return true;
+}
+
+async function readResolvedProvince(page) {
+  return page.evaluate(() => {
+    const clean = text => (text || '').replace(/\s+/g, ' ').trim();
+    const fromDescription = document.querySelector('.descrizioneSituazioneDebitoria strong.testogrigio');
+    if (fromDescription) return clean(fromDescription.textContent || '');
+    const fromTitle = document.querySelector('h3 .testogrigio');
+    if (fromTitle) return clean(fromTitle.textContent || '');
+    return '';
+  });
+}
+
+function buildEmptyStateItem(section, text, provinces, artifactPath = null) {
+  const labels = {
+    daSaldare: 'Da saldare',
+    saldate: 'Saldate',
+  };
+  return {
+    externalId: `ader-${section}:empty:${slug(provinces.join(', ') || 'tutte')}`,
+    title: `${labels[section] || section} - nessun documento`,
+    organization: 'AdE Riscossione',
+    location: null,
+    province: provinces.length ? provinces.join(', ') : null,
+    contractType: 'Empty',
+    rawJson: JSON.stringify({
+      section,
+      empty: true,
+      text,
+      provinces,
+      artifactPath,
+    }),
+  };
+}
+
+function buildTableItems(section, rows, artifactPath = null) {
+  return rows.map((row, idx) => {
+    const numero = row.cells[0] || `${section}-${idx + 1}`;
+    const amount = row.cells.find(cell => /[0-9][0-9\.\,]*\s*€?/.test(cell)) || '';
+    const date = row.cells.find(cell => /\d{2}[\/\-]\d{2}[\/\-]\d{4}/.test(cell)) || '';
+    const provinceLabel = row.provinceScope || '';
+    const titleBase = section === 'daSaldare' ? 'Da saldare' : 'Saldata';
+    return {
+      externalId: `ader-${section}:${slug(provinceLabel)}:${slug(numero)}:${idx + 1}`,
+      title: `${titleBase} ${numero}`.trim(),
+      organization: 'AdE Riscossione',
+      location: date || null,
+      province: provinceLabel || null,
+      contractType: amount || null,
+      rawJson: JSON.stringify({
+        section,
+        provinceScope: row.provinceScope,
+        headers: row.headers,
+        cells: row.cells,
+        structured: row.structured,
+        text: row.text,
+        pageIndex: row.pageIndex,
+        artifactPath,
+      }),
+    };
+  });
+}
+
+function buildTextItem(section, text, artifactPath) {
+  const labels = {
+    procedureAttive: 'Procedure attive',
+    rateizzazione: 'Rateizzazione',
+  };
+  return {
+    externalId: `ader-${section}:${slug(text.slice(0, 80)) || 'snapshot'}`,
+    title: labels[section] || section,
+    organization: 'AdE Riscossione',
+    location: null,
+    province: null,
+    contractType: 'Snapshot',
+    rawJson: JSON.stringify({
+      section,
+      text,
+      artifactPath,
+    }),
+  };
 }
 
 module.exports = {
   meta: {
     name: 'AdE Riscossione – Saldati',
-    url: URL_SALDATI,
+    url: DEBIT_URL,
     authType: 'spid',
-    loginUrl: URL_SALDATI,
-    loginSuccessPattern: 'estratto-conto',
+    loginUrl: HOME_URL,
+    loginSuccessPattern: 'equitaliaServiziWeb|estratto-conto',
   },
 
   async run(db, siteId, session) {
     const { chromium } = require('playwright');
-    const fs   = require('fs');
-    const path = require('path');
     const headless = process.env.PLAYWRIGHT_HEADLESS !== 'false';
-    const browser  = await chromium.launch({ headless });
-
-    const captured = [];
+    const browser = await chromium.launch({ headless });
 
     try {
       const context = session.storageState
@@ -45,186 +455,76 @@ module.exports = {
       if (!session.storageState) await context.addCookies(session.cookies);
 
       const page = await context.newPage();
+      await ensureAuthenticated(page);
+      await openSituazioneDebitoria(page);
+      await openSearchData(page);
 
-      // Intercetta risposte JSON che potrebbero contenere cartelle/debiti
-      page.on('response', async res => {
-        const url = res.url();
-        const ct  = res.headers()['content-type'] || '';
-        if (!ct.includes('application/json')) return;
-        if (
-          url.includes('saldati') || url.includes('pagat') || url.includes('debit') ||
-          url.includes('cartell') || url.includes('estratto') || url.includes('situazione') ||
-          url.includes('riscoss') || url.includes('rate') || url.includes('posiz')
-        ) {
-          try {
-            const body = await res.json();
-            captured.push({ url, body });
-            console.log(`[ader-saldati] API intercettata: ${url.slice(0, 100)}`);
-          } catch {}
+      const provinces = await selectAllProvinces(page);
+      console.log('[ader-saldati] Province selezionate:', provinces.join(', ') || '(default)');
+
+      const items = [];
+
+      const scopes = provinces.length ? provinces : [''];
+
+      for (const provinceLabel of scopes) {
+        await page.goto(SEARCH_URL, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
+        await waitQuiet(page, 1800);
+
+        const daSaldareOpened = await openResultsFor(page, 'daSaldare', provinceLabel);
+        if (!daSaldareOpened) {
+          console.log(`[ader-saldati] Impossibile aprire Da saldare per ${provinceLabel || '(default)'}`);
+          continue;
         }
-      });
+        const daSaldareArtifact = await captureSectionArtifact(page, `da-saldare-${slug(provinceLabel || 'default')}`);
+        const daSaldareRows = await collectPaginatedTable(page, 'daSaldare', provinceLabel ? [provinceLabel] : []);
+        const daSaldareText = await readTabContent(page, 'daSaldare');
+        if (daSaldareRows.length) items.push(...buildTableItems('daSaldare', daSaldareRows, daSaldareArtifact));
+        else if (daSaldareText) items.push(buildEmptyStateItem('daSaldare', daSaldareText, provinceLabel ? [provinceLabel] : [], daSaldareArtifact));
+        console.log(`[ader-saldati] Da saldare ${provinceLabel || '(default)'}: ${daSaldareRows.length} righe`);
 
-      console.log('[ader-saldati] Navigazione a', URL_SALDATI);
-      await page.goto(URL_SALDATI, { waitUntil: 'networkidle', timeout: 60000 });
+        await openTab(page, 'saldate');
+        const saldateArtifact = await captureSectionArtifact(page, `saldate-${slug(provinceLabel || 'default')}`);
+        const saldateRows = await collectPaginatedTable(page, 'saldate', provinceLabel ? [provinceLabel] : []);
+        const saldateText = await readTabContent(page, 'saldate');
+        if (saldateRows.length) items.push(...buildTableItems('saldate', saldateRows, saldateArtifact));
+        else if (saldateText) items.push(buildEmptyStateItem('saldate', saldateText, provinceLabel ? [provinceLabel] : [], saldateArtifact));
+        console.log(`[ader-saldati] Saldate ${provinceLabel || '(default)'}: ${saldateRows.length} righe`);
 
-      const finalUrl = page.url();
-      console.log('[ader-saldati] URL finale:', finalUrl);
-
-      if (isAuthPage(finalUrl)) {
-        throw new Error('Sessione AdE Riscossione scaduta — vai in Accessi SPID e rifai il login.');
-      }
-
-      // Prova a cliccare sul tab "Saldati" se non è già attivo
-      try {
-        const tabClicked = await page.evaluate(() => {
-          const selectors = [
-            '[id*="saldati"]', '[href*="saldati"]', '[data-tab*="saldati"]',
-            'button', 'a', 'li[role="tab"]',
-          ];
-          for (const sel of selectors) {
-            const els = [...document.querySelectorAll(sel)];
-            const tab = els.find(el =>
-              el.textContent?.toLowerCase().includes('saldati') ||
-              el.id?.toLowerCase().includes('saldati')
-            );
-            if (tab) { tab.click(); return true; }
-          }
-          return false;
-        });
-        if (tabClicked) {
-          console.log('[ader-saldati] Tab Saldati cliccato, attendo rendering...');
-          await page.waitForTimeout(3000);
-          // Ulteriore networkidle dopo click
-          try { await page.waitForLoadState('networkidle', { timeout: 10000 }); } catch {}
-        }
-      } catch {}
-
-      await page.waitForTimeout(2000);
-
-      // Dump HTML per debug
-      const html = await page.content();
-      const debugPath = path.join(__dirname, '..', 'data', 'debug-ader-saldati.html');
-      fs.writeFileSync(debugPath, html, 'utf8');
-      console.log(`[ader-saldati] HTML dump: ${debugPath} (${html.length} chars)`);
-
-      // ── Estrazione DOM fallback ────────────────────────────────────────────
-      const domRows = await page.evaluate(() => {
-        const rows = [];
-
-        // Pattern 1: righe tabella nella sezione saldati
-        const tables = [
-          ...document.querySelectorAll('[id*="saldati"] table, [class*="saldati"] table'),
-          ...document.querySelectorAll('table'),
-        ];
-
-        for (const table of tables) {
-          // Intestazioni
-          const headers = [...table.querySelectorAll('th')]
-            .map(th => th.textContent.trim())
-            .filter(Boolean);
-
-          // Corpo
-          table.querySelectorAll('tbody tr, tr').forEach(tr => {
-            const cells = [...tr.querySelectorAll('td')]
-              .map(td => td.textContent.trim())
-              .filter(Boolean);
-            if (cells.length >= 2 && cells[0].length < 200) {
-              const obj = { _cells: cells };
-              headers.forEach((h, i) => { if (cells[i] !== undefined) obj[h] = cells[i]; });
-              rows.push(obj);
-            }
+        await openTab(page, 'procedureAttive');
+        const procedureText = await readTabContent(page, 'procedureAttive');
+        const procedureArtifact = await captureSectionArtifact(page, `procedure-attive-${slug(provinceLabel || 'default')}`);
+        if (procedureText) {
+          const item = buildTextItem('procedureAttive', procedureText, procedureArtifact);
+          item.province = provinceLabel || null;
+          item.rawJson = JSON.stringify({
+            ...JSON.parse(item.rawJson),
+            province: provinceLabel || null,
           });
-
-          if (rows.length > 0) break; // Prima tabella con dati
+          items.push(item);
         }
 
-        // Pattern 2: card/lista elementi
-        if (rows.length === 0) {
-          document.querySelectorAll(
-            '[class*="cartella"], [class*="debit"], [class*="pagament"], ' +
-            '[class*="item"], mat-row, [role="row"]'
-          ).forEach(el => {
-            const text = el.textContent.trim();
-            if (text.length > 5 && text.length < 500) {
-              rows.push({ _text: text });
-            }
+        await openTab(page, 'rateizzazione');
+        const rateText = await readTabContent(page, 'rateizzazione');
+        const rateArtifact = await captureSectionArtifact(page, `rateizzazione-${slug(provinceLabel || 'default')}`);
+        if (rateText) {
+          const item = buildTextItem('rateizzazione', rateText, rateArtifact);
+          item.province = provinceLabel || null;
+          item.rawJson = JSON.stringify({
+            ...JSON.parse(item.rawJson),
+            province: provinceLabel || null,
           });
-        }
-
-        return rows;
-      });
-
-      console.log(`[ader-saldati] API: ${captured.length}, DOM: ${domRows.length}`);
-
-      // ── Combina risultati ──────────────────────────────────────────────────
-      let items = [];
-
-      // Prima: dati da API JSON intercettate
-      for (const { url, body } of captured) {
-        const arr = Array.isArray(body) ? body
-          : body?.data      ? (Array.isArray(body.data)     ? body.data     : [])
-          : body?.items     ? (Array.isArray(body.items)    ? body.items    : [])
-          : body?.cartelle  ? (Array.isArray(body.cartelle) ? body.cartelle : [])
-          : body?.results   ? (Array.isArray(body.results)  ? body.results  : [])
-          : body?.content   ? (Array.isArray(body.content)  ? body.content  : [])
-          : body?.elenco    ? (Array.isArray(body.elenco)   ? body.elenco   : [])
-          : [];
-
-        for (const item of arr) {
-          const id       = item.id || item.numeroCartella || item.codice || item.idPosizione
-                        || String(Date.now() + items.length);
-          const numero   = item.numeroCartella || item.numero || item.codice || id;
-          const importo  = item.importoTotale  || item.importo || item.ammontare || '';
-          const dataPag  = item.dataPagamento  || item.dataChiusura || item.data || '';
-          const tipo     = item.tipoDebito     || item.tipo    || item.categoria || '';
-          const ente     = item.enteAffidatario || item.ente  || item.creditore  || 'AdE Riscossione';
-          const anno     = item.annoAccertamento || item.anno || '';
-
-          items.push({
-            externalId:   `ader-saldato:${id}`,
-            title:        `Cartella ${numero}${anno ? ` (${anno})` : ''}`,
-            organization: ente,
-            location:     dataPag  || null,
-            province:     null,
-            contractType: tipo     || null,
-            expiresAt:    null,
-            rawJson: JSON.stringify({
-              id, numero, importo, dataPagamento: dataPag,
-              tipo, ente, anno,
-              _raw: item,
-            }),
-          });
+          items.push(item);
         }
       }
 
-      // Fallback DOM
-      if (items.length === 0) {
-        items = domRows.map((row, i) => {
-          const cells = row._cells || [];
-          const text  = row._text  || cells.join(' — ');
-          // Cerca pattern tipo "numero/anno" nella prima cella
-          const numero = cells[0] || `riga-${i + 1}`;
-          const importo = cells.find(c => /[0-9]+[,.]/.test(c)) || '';
-          const data    = cells.find(c => /\d{2}[\/\-]\d{2}[\/\-]\d{4}/.test(c)) || '';
+      const htmlPath = path.join(ARTIFACT_DIR, 'debug-ader-saldati.html');
+      if (!fs.existsSync(ARTIFACT_DIR)) fs.mkdirSync(ARTIFACT_DIR, { recursive: true });
+      fs.writeFileSync(htmlPath, await page.content(), 'utf8');
 
-          return {
-            externalId:   `ader-saldato:dom:${i}`,
-            title:        numero.length < 100 ? `Cartella ${numero}` : text.slice(0, 100),
-            organization: 'AdE Riscossione',
-            location:     data    || null,
-            province:     null,
-            contractType: importo || null,
-            expiresAt:    null,
-            rawJson: JSON.stringify({ _cells: cells, _text: text }),
-          };
-        });
-      }
-
-      console.log(`[ader-saldati] Totale: ${items.length}`);
+      console.log(`[ader-saldati] Totale risultati: ${items.length}`);
       return items;
-
     } finally {
-      await browser.close();
+      await browser.close().catch(() => {});
     }
   },
 };

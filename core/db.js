@@ -201,7 +201,7 @@ function getResults(filters = {}) {
   if (newOnly) { conditions.push(`(${IS_NEW_EXPR}) = 1`); }
 
   // Escludi sempre i siti con sezione dedicata (messaggi)
-  conditions.push("s.module_path NOT IN ('piemonte-tu-messaggi','spese-mediche')");
+  conditions.push("s.module_path NOT IN ('piemonte-tu-messaggi','spese-mediche','intesa-sanpaolo-conto')");
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const offset = (page - 1) * limit;

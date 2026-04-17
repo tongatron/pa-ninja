@@ -46,6 +46,8 @@ function navigate(section, modulePath) {
   else if (section === 'messages') loadMessages(modulePath);
   else if (section === 'sessions') loadSessions();
   else if (section === 'info')     loadInfo(modulePath);
+  else if (section === 'banking')  loadBanking(modulePath);
+  else if (section === 'ader')     loadAder(modulePath);
   else if (section === 'admin')    loadAdmin();
   else if (section === 'spese') loadSpese();
 }
@@ -107,7 +109,7 @@ function statusBadge(status) {
 
 function authBadge(authType) {
   if (authType === 'spid') return `<span class="badge badge-spid">SPID</span>`;
-  if (authType === 'basic') return `<span class="badge badge-none">Basic</span>`;
+  if (authType === 'basic') return `<span class="badge badge-none">Login</span>`;
   return `<span class="badge badge-none">Nessuna</span>`;
 }
 
@@ -135,7 +137,7 @@ async function loadDashboard() {
     document.getElementById('stat-last-run').textContent =
       stats.lastRun ? timeAgo(stats.lastRun.started_at) : '-';
 
-    // SPID alert panel
+    // Login alert panel
     const panel = document.getElementById('spid-alert-panel');
     const need = stats.spidNeedAuth || [];
     if (need.length > 0) {
@@ -143,10 +145,10 @@ async function loadDashboard() {
       panel.innerHTML = `
         <div class="spid-alert-icon">🔐</div>
         <div class="spid-alert-body">
-          <strong>${need.length === 1 ? '1 sito richiede' : `${need.length} siti richiedono`} autenticazione SPID</strong>
+          <strong>${need.length === 1 ? '1 sito richiede' : `${need.length} siti richiedono`} rinnovo accesso</strong>
           <div class="spid-alert-list">${need.map(s => `<span>${esc(s.name)}</span>`).join('')}</div>
         </div>
-        <button class="btn btn-primary btn-sm" onclick="navigate('sessions')">Vai agli Accessi →</button>
+        <button class="btn btn-primary btn-sm" onclick="navigate('sessions')">Vai agli accessi →</button>
       `;
     } else {
       panel.classList.add('hidden');
@@ -243,6 +245,7 @@ const SERVICE_GROUPS = [
   { key: 'lavoro-piemonte',name: 'Lavoro Piemonte',    icon: '🏢',  patterns: ['lavoro-piemonte'] },
   { key: 'inps',           name: 'INPS',                icon: '🏛️', patterns: ['inps'] },
   { key: 'ader',           name: 'AdE Riscossione',     icon: '🏦',  patterns: ['ader'] },
+  { key: 'intesa',         name: 'Intesa Sanpaolo',     icon: '💳',  patterns: ['intesa-sanpaolo'] },
   { key: 'spese-mediche',  name: 'Spese Mediche',       icon: '💊',  patterns: ['spese-mediche'] },
 ];
 
@@ -256,6 +259,7 @@ const JOB_LABELS = {
   'inps-domande':             'Consultazione domande',
   'inps-isee':                'ISEE dichiarazioni',
   'ader-saldati':             'Saldati',
+  'intesa-sanpaolo-conto':    'Conto corrente e saldo',
   'spese-mediche':            'Spese Mediche',
 };
 
@@ -263,30 +267,18 @@ let sitesData = [];
 
 async function loadSites() {
   const grid = document.getElementById('services-grid');
-  const statsGrid = document.getElementById('overview-stats');
-  const pills = document.getElementById('dashboard-pills');
   grid.innerHTML = '<div class="loading" style="padding:40px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>';
-  if (statsGrid) {
-    statsGrid.innerHTML = '<div class="loading" style="padding:20px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>';
-  }
-  if (pills) {
-    pills.innerHTML = '';
-  }
   try {
     const [sites, sessions] = await Promise.all([
       get('/api/sites'),
       get('/api/sessions'),
     ]);
     sitesData = sites;
-    renderSitesOverview(sites, sessions);
     renderServiceCards(sites, sessions);
     renderSessionsGrid(sessions);
     updateSpidAlert((sessions || []).filter(s => s.status === 'expired' || s.status === 'none').length);
   } catch (err) {
     grid.innerHTML = `<div style="color:var(--color-danger);padding:24px">Errore: ${esc(err.message)}</div>`;
-    if (statsGrid) {
-      statsGrid.innerHTML = `<div style="color:var(--color-danger);padding:24px">Errore: ${esc(err.message)}</div>`;
-    }
   }
 }
 
@@ -304,13 +296,6 @@ function getPrimaryServiceSite(groupSites) {
   return groupSites.find(site => site.auth_type !== 'none') || groupSites[0] || null;
 }
 
-function latestDate(items) {
-  return items
-    .map(value => ({ value, ts: parseUtc(value) }))
-    .filter(item => !isNaN(item.ts))
-    .sort((a, b) => b.ts - a.ts)[0]?.value || null;
-}
-
 function hostLabel(url) {
   if (!url) return 'Portale disponibile';
   try {
@@ -318,54 +303,6 @@ function hostLabel(url) {
   } catch {
     return url;
   }
-}
-
-function serviceHealthCounts(groupSites) {
-  return groupSites.reduce((acc, site) => {
-    const status = site.last_run?.status || 'none';
-    if (status === 'ok') acc.ok += 1;
-    else if (status === 'error') acc.error += 1;
-    else if (status === 'running') acc.running += 1;
-    else acc.idle += 1;
-    return acc;
-  }, { ok: 0, error: 0, running: 0, idle: 0 });
-}
-
-function renderSitesOverview(sites, sessions) {
-  const statsGrid = document.getElementById('overview-stats');
-  const pills = document.getElementById('dashboard-pills');
-  if (!statsGrid || !pills) return;
-
-  const servicesCount = SERVICE_GROUPS.filter(group =>
-    sites.some(site => group.patterns.some(pattern => site.module_path.startsWith(pattern)))
-  ).length + (sites.some(site => !SERVICE_GROUPS.some(group => group.patterns.some(pattern => site.module_path.startsWith(pattern)))) ? 1 : 0);
-  const enabledJobs = sites.filter(site => site.enabled).length;
-  const errorJobs = sites.filter(site => site.last_run?.status === 'error').length;
-  const runningJobs = sites.filter(site => site.last_run?.status === 'running').length;
-  const spidAttention = sessions.filter(session => !['fresh', 'ok'].includes(session.status)).length;
-  const lastRunAt = latestDate(sites.map(site => site.last_run?.started_at));
-
-  statsGrid.innerHTML = [
-    { label: 'Servizi attivi', value: servicesCount, note: `${enabledJobs} job abilitati` },
-    { label: 'Job in errore', value: errorJobs, note: errorJobs ? 'Richiedono verifica' : 'Nessuna anomalia aperta', tone: errorJobs ? 'danger' : 'ok' },
-    { label: 'Accessi da rinnovare', value: spidAttention, note: spidAttention ? 'Sessioni SPID non valide' : 'Tutte le sessioni attive', tone: spidAttention ? 'warning' : 'ok' },
-    { label: 'Ultima attività', value: lastRunAt ? timeAgo(lastRunAt) : '-', note: runningJobs ? `${runningJobs} job in esecuzione` : 'Nessun job in corso' },
-  ].map(item => `
-    <div class="overview-card ${item.tone ? `tone-${item.tone}` : ''}">
-      <span class="overview-card-label">${item.label}</span>
-      <strong class="overview-card-value">${item.value}</strong>
-      <span class="overview-card-note">${item.note}</span>
-    </div>
-  `).join('');
-
-  const pillItems = [
-    { cls: 'pill-neutral', text: `${enabledJobs} job online` },
-    { cls: errorJobs ? 'pill-danger' : 'pill-ok', text: errorJobs ? `${errorJobs} errori aperti` : 'Nessun errore attivo' },
-    { cls: runningJobs ? 'pill-info' : 'pill-neutral', text: runningJobs ? `${runningJobs} esecuzioni in corso` : 'Nessuna run in corso' },
-    { cls: spidAttention ? 'pill-warning' : 'pill-ok', text: spidAttention ? `${spidAttention} accessi da rinnovare` : 'SPID allineato' },
-  ];
-
-  pills.innerHTML = pillItems.map(item => `<span class="dashboard-pill ${item.cls}">${item.text}</span>`).join('');
 }
 
 function renderSessionsGrid(sessions) {
@@ -416,15 +353,13 @@ function renderServiceCard(group, groupSites, session) {
   const protectedCount = spidJobs.length;
   const primarySite = getPrimaryServiceSite(groupSites);
   const serviceRunArgs = `${esc(JSON.stringify(groupSites.map(site => site.id)))}, ${esc(JSON.stringify(group.name))}`;
-  const health = serviceHealthCounts(groupSites);
-  const lastOkAt = latestDate(groupSites.map(site => site.last_ok_run?.started_at));
   let accessHtml = `
     <div class="svc-access svc-access-neutral">
       <div class="svc-access-top">
         <span class="svc-access-title">Accesso</span>
         <span class="svc-access-badge">Non richiesto</span>
       </div>
-      <div class="svc-access-meta">Questo servizio non usa una sessione SPID dedicata.</div>
+      <div class="svc-access-meta">Questo servizio non usa una sessione dedicata.</div>
     </div>`;
 
   if (session) {
@@ -436,7 +371,7 @@ function renderServiceCard(group, groupSites, session) {
     accessHtml = `
       <div class="svc-access ${ST.cls}">
         <div class="svc-access-top">
-          <span class="svc-access-title">Accesso SPID</span>
+          <span class="svc-access-title">Accesso</span>
           <span class="svc-access-status"><span class="sess-status-dot ${ST.cls}">●</span>${ST.label}</span>
         </div>
         <div class="svc-access-meta">${accessMeta}</div>
@@ -451,32 +386,12 @@ function renderServiceCard(group, groupSites, session) {
     accessHtml = `
       <div class="svc-access sess-none">
         <div class="svc-access-top">
-          <span class="svc-access-title">Accesso SPID</span>
+          <span class="svc-access-title">Accesso</span>
           <span class="svc-access-status"><span class="sess-status-dot sess-none">○</span>Non autenticato</span>
         </div>
         <div class="svc-access-meta">Serve una sessione attiva per ${protectedCount} ${protectedCount === 1 ? 'job protetto' : 'job protetti'}.</div>
       </div>`;
   }
-
-  const metricsHtml = `
-    <div class="svc-metrics">
-      <div class="svc-metric">
-        <span class="svc-metric-label">Job</span>
-        <strong class="svc-metric-value">${groupSites.length}</strong>
-      </div>
-      <div class="svc-metric">
-        <span class="svc-metric-label">OK</span>
-        <strong class="svc-metric-value">${health.ok}</strong>
-      </div>
-      <div class="svc-metric">
-        <span class="svc-metric-label">Errori</span>
-        <strong class="svc-metric-value">${health.error}</strong>
-      </div>
-      <div class="svc-metric">
-        <span class="svc-metric-label">Ultimo OK</span>
-        <strong class="svc-metric-value svc-metric-value-time">${lastOkAt ? timeAgo(lastOkAt) : '-'}</strong>
-      </div>
-    </div>`;
 
   // Righe job
   const jobsHtml = groupSites.map(site => {
@@ -495,12 +410,14 @@ function renderServiceCard(group, groupSites, session) {
           <span class="job-name">${esc(label)}${disabledBadge}</span>
           <span class="job-meta">${esc(hostLabel(site.url))}</span>
         </div>
-        <span class="job-status-wrap">${statusHtml}${timeHtml}</span>
-        <div class="job-actions">
-          ${site.url ? `<button class="btn btn-icon btn-ghost" title="Apri link" onclick="openLink(${esc(JSON.stringify(site.url))})">${externalLinkIcon()}</button>` : ''}
-          <button class="btn btn-icon btn-secondary" title="Esegui" onclick="runSite(${site.id})">&#9654;</button>
-          <button class="btn btn-icon btn-ghost"      title="Modifica" onclick="editSite(${site.id})">&#9998;</button>
-          <button class="btn btn-icon btn-danger"     title="Elimina"  onclick="deleteSite(${site.id}, '${esc(site.name)}')">&#128465;</button>
+        <div class="job-right">
+          <span class="job-status-wrap">${statusHtml}${timeHtml}</span>
+          <div class="job-actions">
+            ${site.url ? `<button class="btn btn-icon btn-ghost" title="Apri link" onclick="openLink(${esc(JSON.stringify(site.url))})">${externalLinkIcon()}</button>` : ''}
+            <button class="btn btn-icon btn-secondary" title="Esegui" onclick="runSite(${site.id})">&#9654;</button>
+            <button class="btn btn-icon btn-ghost"      title="Modifica" onclick="editSite(${site.id})">&#9998;</button>
+            <button class="btn btn-icon btn-danger"     title="Elimina"  onclick="deleteSite(${site.id}, '${esc(site.name)}')">&#128465;</button>
+          </div>
         </div>
       </div>`;
   }).join('');
@@ -514,18 +431,15 @@ function renderServiceCard(group, groupSites, session) {
             <h2 class="svc-name">${esc(group.name)}</h2>
             <div class="svc-subtitle">
               ${groupSites.length} ${groupSites.length === 1 ? 'job' : 'job'}
-              ${protectedCount > 0 ? ` · ${protectedCount} con accesso SPID` : ' · accesso non richiesto'}
+              ${protectedCount > 0 ? ` · ${protectedCount} con accesso autenticato` : ' · accesso non richiesto'}
             </div>
-            ${metricsHtml}
           </div>
         </div>
-        <div class="svc-side">
-          <div class="svc-console-actions">
-            <button class="btn btn-secondary btn-sm" onclick='runService(${serviceRunArgs})'>&#9654; Esegui servizio</button>
-            ${primarySite?.url ? `<button class="btn btn-ghost btn-sm" onclick="openLink(${esc(JSON.stringify(primarySite.url))})">${externalLinkIcon()} Apri portale</button>` : ''}
-          </div>
-          ${accessHtml}
+        <div class="svc-console-actions">
+          <button class="btn btn-secondary btn-sm" onclick='runService(${serviceRunArgs})'>&#9654; Esegui servizio</button>
+          ${primarySite?.url ? `<button class="btn btn-ghost btn-sm" onclick="openLink(${esc(JSON.stringify(primarySite.url))})">${externalLinkIcon()} Apri portale</button>` : ''}
         </div>
+        ${accessHtml}
       </div>
       <div class="svc-jobs">${jobsHtml}</div>
     </div>`;
@@ -978,6 +892,318 @@ async function loadSpese() {
   }
 }
 
+// ── Banking (Intesa Sanpaolo) ────────────────────────────────────────────────
+
+let _bankingModule = null;
+
+async function loadBanking(modulePath) {
+  await ensureSitesLoaded();
+  _bankingModule = modulePath || 'intesa-sanpaolo-conto';
+  const grid = document.getElementById('banking-grid');
+  const title = document.getElementById('banking-section-title');
+  const site = getSiteByModule(_bankingModule);
+
+  title.textContent = `💳 ${JOB_LABELS[_bankingModule] || 'Intesa Sanpaolo'}`;
+  setSectionActions('banking-section-actions', site);
+  grid.innerHTML = '<div class="loading" style="padding:40px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>';
+
+  try {
+    const data = await get('/api/intesa');
+    const summary = data.summary || null;
+    const operations = Array.isArray(data.operations) ? data.operations : [];
+    const files = Array.isArray(data.files) ? data.files : [];
+
+    if (!summary && !operations.length && !files.length) {
+      grid.innerHTML = '<div style="padding:24px;color:var(--color-text-muted)">Nessun dato disponibile. Completa l’accesso e poi esegui il job.</div>';
+      return;
+    }
+
+    const totals = {
+      credits: operations.filter(op => /credit/i.test(op.sign || '')).length,
+      debits: operations.filter(op => /debit/i.test(op.sign || '')).length,
+      booked: operations.filter(op => /contabilizz/i.test(`${op.status} ${op.accountingState}`)).length,
+    };
+
+    grid.innerHTML = `
+      <div class="banking-shell">
+        <div class="banking-summary-panel">
+          <div class="banking-account-card">
+            <div class="banking-card-label">Conto</div>
+            <div class="banking-account-name">${esc(summary?.accountName || 'Conto corrente')}</div>
+            <div class="banking-account-meta">
+              ${summary?.ibanMasked ? `<span>${esc(summary.ibanMasked)}</span>` : ''}
+              ${summary?.balanceDate ? `<span>Saldo al ${esc(summary.balanceDate)}</span>` : ''}
+            </div>
+          </div>
+          <div class="banking-balance-grid">
+            <div class="banking-balance-card">
+              <div class="banking-card-label">Saldo disponibile</div>
+              <div class="banking-balance-value">${esc(summary?.availableBalance || '—')}</div>
+            </div>
+            <div class="banking-balance-card">
+              <div class="banking-card-label">Saldo contabile</div>
+              <div class="banking-balance-value">${esc(summary?.accountingBalance || '—')}</div>
+            </div>
+            <div class="banking-balance-card">
+              <div class="banking-card-label">Intervallo ricerca</div>
+              <div class="banking-balance-subvalue">${esc(summary?.searchFrom || '—')} → ${esc(summary?.searchTo || '—')}</div>
+            </div>
+            <div class="banking-balance-card">
+              <div class="banking-card-label">Ultimo scarico</div>
+              <div class="banking-balance-subvalue">${summary?.downloadedAt ? esc(timeAgo(summary.downloadedAt)) : '—'}</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="banking-meta-grid">
+          <div class="banking-mini-card">
+            <span class="banking-card-label">Movimenti</span>
+            <strong>${operations.length}</strong>
+          </div>
+          <div class="banking-mini-card">
+            <span class="banking-card-label">Contabilizzati</span>
+            <strong>${totals.booked}</strong>
+          </div>
+          <div class="banking-mini-card">
+            <span class="banking-card-label">Entrate</span>
+            <strong>${totals.credits}</strong>
+          </div>
+          <div class="banking-mini-card">
+            <span class="banking-card-label">Uscite</span>
+            <strong>${totals.debits}</strong>
+          </div>
+        </div>
+
+        <div class="banking-files-card">
+          <div class="banking-block-header">
+            <h3>File scaricati</h3>
+          </div>
+          ${files.length ? `
+            <div class="banking-files-list">
+              ${files.map(file => `
+                <a class="banking-file-row" href="/api/intesa/file/${encodeURIComponent(file.fileName)}" download>
+                  <div>
+                    <div class="banking-file-name">${esc(file.fileName)}</div>
+                    <div class="banking-file-meta">${esc(file.fromDate || '—')} → ${esc(file.toDate || '—')}</div>
+                  </div>
+                  <span class="banking-file-time">${file.downloadedAt ? esc(timeAgo(file.downloadedAt)) : ''}</span>
+                </a>
+              `).join('')}
+            </div>
+          ` : '<div class="banking-empty">Nessun file scaricato.</div>'}
+        </div>
+
+        <div class="banking-ops-card">
+          <div class="banking-block-header">
+            <h3>Operazioni contabilizzate</h3>
+          </div>
+          ${operations.length ? `
+            <div class="banking-table-wrap">
+              <table class="banking-table">
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Data valuta</th>
+                    <th>Descrizione</th>
+                    <th>Stato</th>
+                    <th>Importo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${operations.map(op => `
+                    <tr>
+                      <td>${esc(op.bookingDate || '—')}</td>
+                      <td>${esc(op.valueDate || '—')}</td>
+                      <td>
+                        <div class="banking-op-desc">${esc(op.description || '—')}</div>
+                        ${op.category ? `<div class="banking-op-meta">${esc(op.category)}</div>` : ''}
+                      </td>
+                      <td>${op.status || op.accountingState ? `<span class="badge badge-none">${esc(op.status || op.accountingState)}</span>` : '—'}</td>
+                      <td class="banking-amount ${/debit/i.test(op.sign || '') ? 'is-debit' : 'is-credit'}">${esc(op.amount || '—')}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          ` : '<div class="banking-empty">Nessun movimento rilevato nell’ultima esecuzione.</div>'}
+        </div>
+      </div>
+    `;
+  } catch (err) {
+    grid.innerHTML = `<div style="color:var(--color-danger);padding:24px">Errore: ${esc(err.message)}</div>`;
+  }
+}
+
+// ── AdE Riscossione ──────────────────────────────────────────────────────────
+
+let _aderModule = null;
+
+function groupByProvince(rows) {
+  const groups = new Map();
+  rows.forEach(row => {
+    const key = row.province || 'Senza provincia';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(row);
+  });
+  return [...groups.entries()];
+}
+
+function buildAderExportLink(section, province) {
+  const params = new URLSearchParams();
+  if (province && province !== 'Senza provincia') params.set('province', province);
+  const suffix = params.toString() ? `?${params}` : '';
+  return `/api/ader/export/${section}${suffix}`;
+}
+
+function renderAderSectionTop(row) {
+  const lastRun = row?.lastSeenAt ? esc(timeAgo(row.lastSeenAt)) : '—';
+  const screenshot = row?.artifactFileName
+    ? `<a class="btn btn-ghost btn-sm" href="/api/ader/artifact/${encodeURIComponent(row.artifactFileName)}" target="_blank" rel="noopener">Screenshot</a>`
+    : '<span class="ader-top-meta-empty">Screenshot non disponibile</span>';
+
+  return `
+    <div class="ader-top-meta">
+      <span class="ader-top-meta-label">Ultimo run ${lastRun}</span>
+      ${screenshot}
+    </div>
+  `;
+}
+
+function renderAderTableSection(title, sectionKey, rows) {
+  const realRows = rows.filter(row => !row.empty && row.headers?.length);
+  const emptyRows = rows.filter(row => row.empty);
+
+  if (!realRows.length && !emptyRows.length) {
+    return `
+      <div class="ader-section-card">
+        <div class="ader-block-header">
+          <h3>${title}</h3>
+        </div>
+        <div class="ader-empty">Nessun contenuto disponibile.</div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="ader-section-card">
+      <div class="ader-block-header">
+        <h3>${title}</h3>
+      </div>
+      ${realRows.length ? groupByProvince(realRows).map(([province, provinceRows]) => {
+        const headers = provinceRows[0].headers || [];
+        return `
+          <div class="ader-province-block">
+            <div class="ader-province-header">
+              <div>
+                <div class="ader-province-name">${esc(province)}</div>
+                <div class="ader-province-meta">${provinceRows.length} righe</div>
+              </div>
+              <div class="ader-province-actions">
+                <a class="btn btn-secondary btn-sm" href="${buildAderExportLink(sectionKey, province)}" download>⬇ Excel (CSV)</a>
+              </div>
+            </div>
+            ${renderAderSectionTop(provinceRows[0])}
+            <div class="ader-table-wrap">
+              <table class="ader-table">
+                <thead>
+                  <tr>
+                    ${headers.map(header => `<th>${esc(header)}</th>`).join('')}
+                  </tr>
+                </thead>
+                <tbody>
+                  ${provinceRows.map(row => `
+                    <tr>
+                      ${headers.map(header => `<td>${esc(row.structured?.[header] || '—')}</td>`).join('')}
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      }).join('') : ''}
+      ${!realRows.length && emptyRows.length ? emptyRows.map(row => `
+        <div class="ader-empty">
+          ${renderAderSectionTop(row)}
+          <strong>${esc(row.province || 'Nessuna provincia')}</strong><br />
+          ${esc(row.text || 'Nessun documento trovato.')}
+        </div>
+      `).join('') : ''}
+    </div>
+  `;
+}
+
+function renderAderSnapshotSection(title, rows) {
+  if (!rows.length) {
+    return `
+      <div class="ader-section-card">
+        <div class="ader-block-header">
+          <h3>${title}</h3>
+        </div>
+        <div class="ader-empty">Nessun contenuto disponibile.</div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="ader-section-card">
+      <div class="ader-block-header">
+        <h3>${title}</h3>
+      </div>
+      <div class="ader-snapshot-list">
+        ${rows.map(row => `
+          <article class="ader-snapshot-card">
+            <div class="ader-snapshot-top">
+              <div>
+                <div class="ader-province-name">${esc(row.province || 'Vista generale')}</div>
+                <div class="ader-province-meta">${esc(row.title || title)}</div>
+              </div>
+            </div>
+            ${renderAderSectionTop(row)}
+            <div class="ader-snapshot-text">${esc(row.text || 'Nessun testo disponibile.')}</div>
+          </article>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+async function loadAder(modulePath) {
+  await ensureSitesLoaded();
+  _aderModule = modulePath || 'ader-saldati';
+  const grid = document.getElementById('ader-grid');
+  const title = document.getElementById('ader-section-title');
+  const site = getSiteByModule(_aderModule);
+
+  title.textContent = `🏦 ${JOB_LABELS[_aderModule] || 'AdE Riscossione'}`;
+  setSectionActions('ader-section-actions', site);
+  grid.innerHTML = '<div class="loading" style="padding:40px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>';
+
+  try {
+    const data = await get('/api/ader');
+    const daSaldare = Array.isArray(data.daSaldare) ? data.daSaldare : [];
+    const saldate = Array.isArray(data.saldate) ? data.saldate : [];
+    const procedureAttive = Array.isArray(data.procedureAttive) ? data.procedureAttive : [];
+    const rateizzazione = Array.isArray(data.rateizzazione) ? data.rateizzazione : [];
+
+    if (!daSaldare.length && !saldate.length && !procedureAttive.length && !rateizzazione.length) {
+      grid.innerHTML = '<div class="ader-empty">Nessun dato disponibile. Esegui il job per aggiornare la situazione debitoria.</div>';
+      return;
+    }
+
+    grid.innerHTML = `
+      <div class="ader-shell">
+        ${renderAderTableSection('Da saldare', 'daSaldare', daSaldare)}
+        ${renderAderTableSection('Saldate', 'saldate', saldate)}
+        ${renderAderSnapshotSection('Procedure attive', procedureAttive)}
+        ${renderAderSnapshotSection('Rateizzazione', rateizzazione)}
+      </div>
+    `;
+  } catch (err) {
+    grid.innerHTML = `<div style="color:var(--color-danger);padding:24px">Errore: ${esc(err.message)}</div>`;
+  }
+}
+
 // ── Sessions ──────────────────────────────────────────────────────────────────
 
 const SESSION_STATUS = {
@@ -1005,7 +1231,8 @@ async function loadSessions() {
 
 function renderSessionCard(s) {
   const st = SESSION_STATUS[s.status] || SESSION_STATUS.none;
-  const loginBtnLabel = s.saved_at ? '🔑 Rinnova accesso' : '🔑 Accedi con SPID';
+  const authLabel = s.auth_type === 'spid' ? 'SPID' : 'browser';
+  const loginBtnLabel = s.saved_at ? '🔑 Rinnova accesso' : `🔑 Accedi con ${authLabel}`;
 
   let metaHtml = '';
   if (s.saved_at) {
@@ -1016,7 +1243,7 @@ function renderSessionCard(s) {
         <span>${s.cookie_count} cookie salvati</span>
       </div>`;
     if (s.status === 'warning' || s.status === 'expired') {
-      metaHtml += `<div class="sess-hint">Le sessioni SPID durano circa 1 ora. Potrebbe essere necessario rinnovare.</div>`;
+      metaHtml += `<div class="sess-hint">${s.auth_type === 'spid' ? 'Le sessioni SPID durano circa 1 ora.' : 'La sessione salvata puo richiedere un rinnovo periodico.'} Potrebbe essere necessario rinnovare.</div>`;
     }
   } else {
     metaHtml = '<div class="sess-meta">Nessuna sessione salvata</div>';
@@ -1114,7 +1341,7 @@ function stopLoginPoll() {
 }
 
 function showLoginBanner(siteName) {
-  document.getElementById('login-banner-site').textContent = `Login SPID — ${siteName}`;
+  document.getElementById('login-banner-site').textContent = `Login browser — ${siteName}`;
   document.getElementById('login-banner').classList.remove('hidden');
 }
 

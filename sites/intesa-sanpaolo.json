@@ -1,0 +1,16 @@
+{
+  "service": "Intesa Sanpaolo",
+  "icon": "🏦",
+  "auth_type": "basic",
+  "jobs": [
+    {
+      "label": "Conto corrente e saldo",
+      "module_path": "intesa-sanpaolo-conto",
+      "nav_section": "banking",
+      "view": {
+        "type": "banking-dashboard",
+        "notes": "Saldo disponibile, saldo contabile, movimenti contabilizzati e file scaricato"
+      }
+    }
+  ]
+}

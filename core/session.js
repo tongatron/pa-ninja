@@ -1,6 +1,7 @@
 'use strict';
 
 const path = require('path');
+const fs = require('fs');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const { getDb } = require('./db');
@@ -66,14 +67,29 @@ async function login(siteName) {
   const successPattern = meta.loginSuccessPattern
     ? new RegExp(meta.loginSuccessPattern)
     : null;
+  const usePersistentProfile = Boolean(meta.persistentProfile || site.auth_type === 'basic');
+  const profileDir = path.join(__dirname, '..', 'data', 'browser-profiles', site.module_path);
 
-  console.log(`Opening browser for SPID login on: ${site.name}`);
+  console.log(`Opening browser for login on: ${site.name}`);
   console.log(`URL: ${loginUrl}`);
-  console.log('Complete the SPID login in the browser window. The session will be saved automatically.');
+  console.log(`Complete the login in the browser window. The session will be saved automatically.${usePersistentProfile ? ' This site uses a persistent local profile.' : ''}`);
 
-  const browser = await chromium.launch({ headless: false });
+  if (usePersistentProfile && !fs.existsSync(profileDir)) {
+    fs.mkdirSync(profileDir, { recursive: true });
+  }
+
+  let browser = null;
+  let context = null;
   try {
-    const context = await browser.newContext();
+    if (usePersistentProfile) {
+      context = await chromium.launchPersistentContext(profileDir, {
+        headless: false,
+        acceptDownloads: true,
+      });
+    } else {
+      browser = await chromium.launch({ headless: false });
+      context = await browser.newContext();
+    }
     const page = await context.newPage();
 
     await page.goto(loginUrl);
@@ -179,7 +195,8 @@ async function login(siteName) {
     console.log(`Session saved for "${site.name}" (${cookies.length} cookies)`);
     return cookies;
   } finally {
-    await browser.close().catch(() => {});
+    if (context) await context.close().catch(() => {});
+    if (browser) await browser.close().catch(() => {});
   }
 }
 

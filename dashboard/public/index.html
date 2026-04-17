@@ -79,8 +79,19 @@
             <span class="nav-icon">🏦</span>AdE Riscossione
           </span>
           <ul class="nav-job-list">
-            <li><a class="nav-job" data-section="results" data-module="ader-saldati" href="#">
+            <li><a class="nav-job" data-section="ader" data-module="ader-saldati" href="#">
               <span class="nav-job-dot">›</span> Saldati
+            </a></li>
+          </ul>
+        </li>
+
+        <li class="nav-service-item">
+          <span class="nav-service-label">
+            <span class="nav-icon">💳</span>Intesa Sanpaolo
+          </span>
+          <ul class="nav-job-list">
+            <li><a class="nav-job" data-section="banking" data-module="intesa-sanpaolo-conto" href="#">
+              <span class="nav-job-dot">›</span> Conto corrente e saldo
             </a></li>
           </ul>
         </li>
@@ -135,28 +146,15 @@
       <section id="section-sites" class="section active">
         <div class="section-header">
           <h1>Dashboard</h1>
-          <div class="section-header-actions">
+          <div style="display:flex;gap:8px">
             <button id="btn-run-all" class="btn btn-primary">&#9654; Esegui tutti ora</button>
             <button id="btn-add-site" class="btn btn-secondary">+ Aggiungi</button>
           </div>
         </div>
         <p class="section-desc">
-          Stato servizi, ultima esecuzione e accessi SPID in un'unica vista operativa.
+          Stato servizi, ultima esecuzione e accessi autenticati in un'unica vista operativa.
         </p>
         <div id="run-all-status" class="alert hidden"></div>
-        <div class="dashboard-overview">
-          <div class="dashboard-hero">
-            <div class="dashboard-hero-copy">
-              <div class="dashboard-eyebrow">Console operativa</div>
-              <h2>Una vista compatta su servizi, job e accessi SPID.</h2>
-              <p>Monitora le anomalie, apri i portali e lancia i job senza cambiare schermata.</p>
-            </div>
-            <div id="dashboard-pills" class="dashboard-pills"></div>
-          </div>
-          <div id="overview-stats" class="overview-stats">
-            <div class="loading" style="padding:20px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>
-          </div>
-        </div>
         <div id="services-grid" class="services-grid">
           <div class="loading" style="padding:40px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>
         </div>
@@ -245,6 +243,32 @@
         </div>
       </section>
 
+      <section id="section-banking" class="section">
+        <div class="section-header">
+          <h1 id="banking-section-title">💳 Intesa Sanpaolo</h1>
+          <div id="banking-section-actions" class="section-actions"></div>
+        </div>
+        <p class="section-desc">
+          Snapshot del conto, saldi e movimenti contabilizzati. Esegui il job dopo l’accesso per aggiornare il quadro e scaricare il file movimenti.
+        </p>
+        <div id="banking-grid" class="banking-grid">
+          <div class="loading" style="padding:40px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>
+        </div>
+      </section>
+
+      <section id="section-ader" class="section">
+        <div class="section-header">
+          <h1 id="ader-section-title">🏦 AdE Riscossione</h1>
+          <div id="ader-section-actions" class="section-actions"></div>
+        </div>
+        <p class="section-desc">
+          Vista operativa distinta per documenti da saldare, documenti saldati, procedure attive e rateizzazione.
+        </p>
+        <div id="ader-grid" class="ader-grid">
+          <div class="loading" style="padding:40px;text-align:center;color:var(--color-text-muted)">Caricamento...</div>
+        </div>
+      </section>
+
       <!-- Spese Mediche section -->
       <section id="section-spese" class="section">
         <div class="section-header">
@@ -261,7 +285,7 @@
       <!-- Sessions section -->
       <section id="section-sessions" class="section">
         <div class="section-header">
-          <h1>🔐 Accessi SPID</h1>
+          <h1>🔐 Accessi</h1>
         </div>
         <p class="section-desc">
           Gestisci le sessioni di autenticazione. Il pulsante <strong>Accedi</strong> apre una finestra Chromium:
